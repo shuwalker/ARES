@@ -1,8 +1,8 @@
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
-README = (REPO / "README.md").read_text(encoding="utf-8")
-DOCKER_MD = (REPO / "docs" / "docker.md").read_text(encoding="utf-8")
+ROOT = Path(__file__).resolve().parents[3]
+README = (ROOT / "README.md").read_text(encoding="utf-8")
+DOCKER_MD = (ROOT / "docs" / "DEVELOPMENT.md").read_text(encoding="utf-8")
 
 
 def test_docker_docs_explain_host_localhost_for_api_urls():

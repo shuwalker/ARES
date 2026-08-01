@@ -51,17 +51,17 @@ Chat execution remains owned by the existing run state, stream channels, and
 durable run journal. WebSocket handlers subscribe before replay, replay journal
 events after the browser cursor, discard duplicate event IDs, and consume
 blocking thread-safe queues through `asyncio.to_thread()` so they do not block
-Uvicorn's event loop. The exact contract and durability boundaries are recorded
-in [`../../webui/docs/architecture/fastapi-websocket-transport.md`](../../webui/docs/architecture/fastapi-websocket-transport.md).
+Uvicorn's event loop. The contract and durability boundaries are summarized in
+[`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md).
 
 Framework selection is owned by `fastapi_app/adapters/`. A strict
 `BaseLLMAdapter` contract covers health, model discovery, chat start, run
-observation, status, and cancellation. The registry resolves Ares Agent,
-JaegerAI, or Hybrid from the active Local Profile and the session override on
+observation, status, and cancellation. The registry resolves the selected
+external runtime from the active Local Profile and session override on
 every request; the FastAPI services and routers contain no framework branches.
 MCP implements the separate `BaseToolAdapter` contract because tools and model
-execution are separate connection kinds. See
-[`../../webui/docs/architecture/fastapi-adapter-registry.md`](../../webui/docs/architecture/fastapi-adapter-registry.md).
+execution are separate connection kinds. See the adapter decisions in
+[`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md).
 
 FastAPI feature routers are registered before the final React catch-all. An
 unknown `/api/` path and a missing file-looking path return JSON 404 responses;
@@ -72,9 +72,9 @@ running the production server and requires parity for every retained contract.
 
 ## Frontend
 
-- Source: `frontend/src/`
-- Public files: `frontend/public/`
-- Production output: `frontend/dist/`
+- Source: `../../apps/web/src/`
+- Public files: `../../apps/web/public/`
+- Production output: `../../apps/web/dist/`
 - Development: Vite on `127.0.0.1:5173`
 - Production serving: Python serves only `frontend/dist/`
 - Optional development proxy: `ARES_VITE_DEV=1`
@@ -118,12 +118,12 @@ backed by `/api/share/:token`.
 ## Verification
 
 ```bash
-cd webui/frontend
+cd apps/web
 npm ci
 npm run typecheck
 npm test
 npm run build
 
-cd ..
-.venv/bin/python -m pytest tests/
+cd ../../services/controller
+./scripts/test.sh
 ```

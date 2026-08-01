@@ -11,15 +11,15 @@ Before making changes, read:
 
 1. `../FOUNDATION.md` — canonical ARES product and architecture definition
 2. `../../docs/README.md` — documentation authority map
-3. `../../docs/architecture/RUNTIME.md` — how the running system works
+3. `../../docs/ARCHITECTURE.md` — how the running system works
 4. `../../services/controller/README.md` (if present) and `CONTRIBUTING.md` under `services/controller/`
 5. `ARCHITECTURE.md` (this folder) for WebUI module layout
 6. `../../.claude/TESTING.md` for verification commands
 
-Controller contracts and operator docs live under `services/controller/docs/`
-(e.g. `CONTRACTS.md`, `onboarding.md`, `troubleshooting.md`, `rfcs/`).
+Controller contracts and operator guidance are consolidated under `../../docs/`
+in `API.md`, `ARCHITECTURE.md`, `DEVELOPMENT.md`, and `SECURITY.md`.
 
-For UI or UX work, read `services/controller/docs/UIUX-GUIDE.md` and `DESIGN.md`
+For UI or UX work, read `DESIGN.md` and `../../docs/PRODUCT_SPEC.md`
 (this folder) before changing layout, interaction flow, themes, chat rendering,
 or composer chrome. Do not introduce metaphorical architecture terminology that
 conflicts with the plain engineering vocabulary in `../FOUNDATION.md`.
@@ -29,7 +29,7 @@ conflicts with the plain engineering vocabulary in `../FOUNDATION.md`.
 If the task involves install, reinstall, bootstrap, first-run onboarding,
 provider setup, local model server setup, Docker onboarding, WSL onboarding, or
 support for a failed first run, read
-`../../services/controller/docs/onboarding-agent-checklist.md`
+`../../docs/DEVELOPMENT.md`
 before running commands or inspecting logs.
 
 Follow that checklist's safety rules:

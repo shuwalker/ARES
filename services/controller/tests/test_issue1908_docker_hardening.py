@@ -2,10 +2,11 @@
 import pathlib
 import re
 
-REPO = pathlib.Path(__file__).parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[3]
+REPO = ROOT / "services" / "controller"
 DOCKERFILE = (REPO / "Dockerfile").read_text(encoding="utf-8")
 INIT_SCRIPT = (REPO / "docker_init.bash").read_text(encoding="utf-8")
-DOCKER_DOCS = (REPO / "docs" / "docker.md").read_text(encoding="utf-8")
+DOCKER_DOCS = (ROOT / "docs" / "DEVELOPMENT.md").read_text(encoding="utf-8")
 
 
 def _dockerfile_install_packages() -> str:

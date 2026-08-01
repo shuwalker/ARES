@@ -4,9 +4,9 @@
 </p>
 
 <p align="center">
-  A Mac-first platform hosting a persistent Synthetic Intelligence (SI).<br>
-  The SI knows the user, remembers history, protects data, plans work,<br>
-  delegates to workers, verifies results, and remains consistent across providers.<br>
+  A Mac-first platform hosting a persistent Personal Assistant Engine.<br>
+  Maintains user context, protects data privacy, plans daily work,<br>
+  delegates to AI runtimes, verifies results, and remains consistent across providers.<br>
 </p>
 
 <p align="center">
@@ -14,12 +14,11 @@
   <a href="#features">Features</a> ·
   <a href="#character-avatar-browser">Characters</a> ·
   <a href="#architecture">Architecture</a> ·
-  <a href="services/controller/FORK_CHANGES.md">Changelog</a> ·
-  <a href="#credits">Credits</a>
+  <a href="docs/README.md">Documentation</a> ·
+  <a href="#troubleshooting">Troubleshooting</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/shuwalker/ARES/releases"><img src="https://img.shields.io/badge/status-beta-orange" alt="Status: Beta"></a>
   <a href="https://github.com/shuwalker/ARES/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
   <a href="https://github.com/NousResearch/ares-agent"><img src="https://img.shields.io/badge/powered%20by-Ares%20Agent-purple" alt="Powered by Ares Agent"></a>
   <a href="https://github.com/JenkinsRobotics/JaegerAI"><img src="https://img.shields.io/badge/robotics-JaegerAI-cyan" alt="JaegerAI Robotics"></a>
@@ -29,45 +28,34 @@
 
 ## Quick Start
 
-### How To Run ARES Today
+### Execution Modes
 
-ARES currently has three supported local run paths and two planned packaging
-paths:
+ARES supports three local execution paths:
 
-- **Developer mode:** run `swift run ARES` from the repo root. This launches
-  the native macOS shell, which wraps and controls the Web UI.
-- **Web mode:** run `./start.sh` from the repo root, then open
-  `http://localhost:8788` in a browser.
-- **Windows companion app mode:** run the Web UI, then run the Tauri wrapper
-  from `ARES-Windows/`. This is the Windows native shell path for wrapping the
-  Web UI and adding Windows desktop integrations.
-- **Future standalone modes:** package `ARES.app` on macOS and a Windows
-  installer from `ARES-Windows/`, each with `services/controller/`, a Python
-  runtime/environment, dependencies, and first-run setup. This is not complete
-  yet, so current native builds are for local/developer use.
+- **Developer Mode:** Run `swift run ARES` from the repository root to launch the native macOS shell wrapping the Web UI.
+- **Web Standalone Mode:** Run `./start.sh` from the repository root, then navigate to `http://localhost:8788`.
+- **Windows Companion Mode:** Launch the Web UI backend, then run `cargo tauri dev` from `ARES-Windows/`.
 
-For a first local setup:
+### Installation
 
 ```bash
 git clone https://github.com/shuwalker/ARES.git
 cd ARES
 
-# Run the installer
+# Run automated installer
 bash install.sh
 ```
 
-The installer handles everything automatically:
-- Detects or installs JaegerAI/JROS when available (optional for saving a Local Profile)
-- Creates a Python virtual environment
-- Installs Python dependencies
-- Configures a live adapter when one is detected (defaults to `jros_local`)
+The installer handles setup automatically:
+- Detects or configures local AI runtimes (Jaeger AI, Hermes Agent, Ollama).
+- Installs Python virtual environment and dependencies.
+- Configures live runtime provider adapters.
 
-**Options:**
-- `--with-ares` — also install Ares Agent package (optional coding addition; not a backend mode)
-- `--no-start` — skip auto-starting the server after install
-- `--backend unassigned|auto|jros_local|hermes_local|claude_local|...` — optionally elect a live adapter; the default is `unassigned`
+**Installer Options:**
+- `--no-start` — Skip auto-launching the web server after installation.
+- `--backend jaeger_local|hermes_local|claude_local|...` — Elect an active runtime adapter.
 
-After install, run the Web UI:
+After installation, run the Web UI:
 
 ```bash
 ./start.sh
@@ -84,136 +72,96 @@ swift run ARES
 ### Windows Companion App
 
 ```powershell
-cd ARES
-cd services/controller
+# Terminal 1: Backend Controller
+cd ARES/services/controller
 .\.venv\Scripts\python.exe server.py
-```
 
-In a second PowerShell window:
-
-```powershell
-cd ARES
-cd ARES-Windows
+# Terminal 2: Windows Shell
+cd ARES/ARES-Windows
 cargo tauri dev
 ```
 
-The Windows app currently loads the running Web UI from
-`http://127.0.0.1:8788`. Its goal is to become the Windows version of the ARES
-native shell, including native start/stop control for the Web UI and Windows
-tray/menu integrations.
+---
 
 ## Features
 
-- **Single User-Facing Assistant Interface** — ARES composes runtimes, models, tools, voice, avatars, memory providers, and device integrations behind one consistent user experience.
-- **Runtime-Compatible Adapter Layer** — JaegerAI, Ares, OpenAI/ChatGPT-compatible services, and future systems connect through adapters. ARES presents and coordinates them without copying their internals.
-- **Mac-First Native Home** — SwiftUI app launches the Web UI, wraps it in WKWebView, and grows into the native menu/system integration layer for local Mac automation, status, notifications, and approvals.
-- **Windows Companion Shell** — Tauri app in `ARES-Windows/` wraps the Web UI for Windows and is the home for Windows tray/menu/server-control integrations.
-- **Web UI Everywhere** — Self-contained Python server with streaming, session management, hot-reload, and password auth. Works on other devices over Tailscale/LAN while native apps are still Mac-first.
-- **JaegerAI Embodiment Path** — JaegerAI is the primary embodied runtime. Turns run through the local `jaeger bridge` over stdio (NDJSON) on the same machine.
-- **Ares Capability Path** — Ares remains available as an independent runtime for coding, terminal work, skills, sessions, cron, memory-backed automation, provider routing, delegation, and operations.
-- **Explicit Hybrid Composition** — Hybrid mode composes capabilities deliberately. Prefer one turn owner and call additional runtimes/providers only when needed.
-- **Character Avatar Browser** — 14 visual character personas (HAL 9000, GLaDOS, Jarvis, TARS, Bender, Helldiver, and more) with card art, traits, lore, and active character selection from JaegerAI data.
-- **Presence Renderers** — Avatar/voice/body surfaces can evolve from animated eyes to Live2D-style, VR sprite rigs, Grok-like avatars, desktop modes, and future robotic bodies.
-- **Development Reload** — Vite provides frontend hot-module replacement; `ARES_WEBUI_RELOAD=1` restarts the Python controller after backend edits.
-- **Local + Cloud Choice** — The active runtime can choose local or cloud models depending on the task, including OpenAI/ChatGPT-compatible providers where configured.
-- **Mail Butler** — IMAP-based mail cleaner with 321 classification rules. Server-side, no Mail.app dependency.
-- **Built in Public** — Every episode of the build is documented as part of the "Building Ares" YouTube series.
+- **Unified Assistant Interface** — Integrates runtimes, models, tools, voice, character avatars, and system integrations into one coherent user experience.
+- **Runtime-Compatible Adapter Layer** — JaegerAI, Ares Agent, Ollama, and OpenAI/ChatGPT-compatible cloud providers connect seamlessly through adapters.
+- **Mac-First Native Home** — Native SwiftUI app wrapping the Web UI in `WKWebView` with macOS system menu integrations.
+- **Windows Companion Shell** — Tauri application (`ARES-Windows/`) wrapping the Web UI for Windows desktop integration.
+- **Web UI Everywhere** — Self-contained FastAPI Python server with real-time streaming, session management, and password authentication.
+- **JaegerAI Embodiment Path** — Primary embodied runtime communicating through the local `jaeger bridge` protocol over stdio (NDJSON).
+- **Character Avatar Browser** — Schema-backed visual character personas with card art, traits, role, and lore data.
+- **Local + Cloud Flexibility** — Runtimes select local or cloud models based on user preference and data sensitivity level.
+- **Mail Butler** — Server-side IMAP mail cleaning and classification service.
+
+---
 
 ## Character Avatar Browser
 
-ARES treats characters as presentation data for the assistant interface. The character tab loads JaegerAI `character/v1` YAML data, displays avatar card art, shows role/voice/trait/lore detail, and lets the user select the character projection ARES presents.
+ARES presents visual character personas backed by schema definitions:
 
-- **Visual roster:** Character metadata comes from connected JaegerAI data; the current React interface uses the ARES app icon until a normalized avatar renderer is connected.
-- **Schema-backed:** The browser reads JaegerAI character data through `services/controller/api/characters.py` and `/api/ares/characters`.
-- **Runtime control:** Selecting a character updates the presentation/adapter surface; JaegerAI remains the canonical owner of character behavior in JaegerAI-backed mode.
+- **Schema-Backed:** Reads character metadata via `/api/ares/characters`.
+- **Runtime Control:** Selecting a character updates the assistant presentation layer.
 
-<p align="center">
-## Architecture
+---
 
+## System Architecture
+
+```mermaid
+flowchart TD
+    subgraph Presentation ["Presentation & Interfaces"]
+        MacApp["Mac App (SwiftUI / WKWebView)"]
+        WebUI["Web UI (React / Vite)"]
+        WinApp["Windows Companion (Tauri)"]
+    end
+
+    subgraph Controller ["Assistant Controller Platform"]
+        API["FastAPI Transport & Routers"]
+        State["Session & Task Event Store"]
+        Security["Trust & Context Engine"]
+    end
+
+    subgraph Runtimes ["AI Runtimes & Providers"]
+        Jaeger["JaegerAI Runtime"]
+        AresAgent["Ares Agent Runtime"]
+        Cloud["OpenAI / Cloud Providers"]
+    end
+
+    Presentation --> Controller
+    Controller --> Runtimes
 ```
-┌──────────────────────────────────────────────────┐
-│                    ARES                          │
-│ presentation layer + adapter host + client apps   │
-│                                                  │
-│  ┌───────────┐ ┌────────────┐ ┌──────────────┐ │
-│  │ Mac App    │ │ Web UI     │ │ Presence     │ │
-│  │ menus/sys  │ │ Tailscale  │ │ avatar/voice │ │
-│  └─────┬─────┘ └─────┬──────┘ └──────┬───────┘ │
-│        │             │               │         │
-│        ▼             ▼               ▼         │
-│  ┌──────────────────────────────────────────┐  │
-│  │ Integration layer: identity projection,  │  │
-│  │ permissions, sessions, events, adapters  │  │
-│  └──────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────┘
-       │              │              │             │
-       ▼              ▼              ▼             ▼
- ┌───────────┐  ┌──────────┐  ┌────────────┐  ┌────────┐
- │ JaegerAI  │  │ Ares   │  │ OpenAI/    │  │ Tools  │
- │ runtime   │  │ runtime  │  │ providers  │  │ apps   │
- └───────────┘  └──────────┘  └────────────┘  └────────┘
-```
 
-ARES is intentionally not a second JROS, a second Ares, or a multi-agent
-company simulator. It is a client and integration layer over independent
-runtimes and capability providers. A runtime owns a turn, a model/provider may
-provide reasoning, an avatar renderer may provide presentation, and a tool may
-provide external action; ARES coordinates those pieces into one assistant
-interface.
+Detailed technical documentation is available in the [`docs/`](docs/README.md) directory.
+
+---
 
 ## Repository Structure
 
-```
+```text
 ARES/
 ├── Package.swift          # Swift Package Manager manifest
 ├── apps/macos/            # Native macOS app + ARESCore contracts
-│   ├── Sources/ARES/      # SwiftUI/WKWebView shell and native app surface
-│   ├── Sources/ARESCore/  # Shared models, contracts, discovery, utilities
-│   └── Tests/             # Native app tests
-├── apps/web/              # React UI
+│   ├── Sources/ARES/      # SwiftUI/WKWebView native shell
+│   └── Sources/ARESCore/  # Shared models, contracts, and utilities
+├── apps/web/              # React / TypeScript SPA
 ├── services/controller/   # FastAPI controller + API + tests
-│   ├── api/               # Backend — server, streaming, auth, hot-reload
-│   ├── frontend/          # React/Vite frontend, public assets, and API adapters
-│   ├── fastapi_app/       # FastAPI application and HTTP/WebSocket routers
-│   ├── requirements.txt   # Python dependencies
-│   └── tests/             # Test suite
-├── tools/                 # Standalone tools
-│   ├── email_ai_assistant/ # Native Mail.app AI assistant (classify, draft, auto-clean)
-│   ├── mcp-bootstrap/     # Local vs remote/server MCP setup and verification
-│   └── safari-mcp-bootstrap/ # Safari MCP setup/doctor for macOS automation
-└── docs/assets/           # README images and branding
+│   ├── api/               # Server logic, streaming, auth
+│   ├── fastapi_app/       # FastAPI application & HTTP/SSE routers
+│   └── requirements.txt   # Python dependencies
+├── docs/                  # Canonical engineering documentation
+└── ARES-Windows/          # Windows Companion Tauri app
 ```
 
-## Key Decisions
+---
 
-1. **ARES composes an assistant interface.** The goal is one coherent user-facing AI experience assembled from runtimes, tools, models, memory providers, avatar renderers, and device integrations.
-2. **Controller lives in `services/controller/`; UI in `apps/web/`** — self-contained: own venv, own auth, own deps. One repo with the Swift app.
-3. **Mac app first, web access everywhere.** The SwiftUI app is the native Mac home with menus/system integration and launches the Web UI; the same Web UI remains reachable from other devices over Tailscale/LAN.
-4. **JaegerAI is the primary embodied path.** ARES talks to JaegerAI through the bridge/client protocol and displays JaegerAI characters, voice, tools, and body capabilities without replacing JaegerAI's own UI or runtime.
-5. **Ares and OpenAI-compatible services stay capability providers.** They provide coding, automation, model access, cloud reasoning, tools, and Mac/system integrations where configured.
-6. **Presence is modular.** Animated eyes, character cards, Live2D-style rigs, VR sprite rigs, Grok-like avatars, desktop modes, and future robotic bodies are renderer surfaces for the assistant.
+## Troubleshooting & Common Failures
 
-## Update Checking
+- **Host API at `localhost` fails from WebUI**: Inside a container, `localhost` means *that container*. Container `localhost` means the container. Configure host bridge networking or `host.docker.internal`.
+- **Docker Home Bind Mount Permissions**: Executing `sudo docker compose up -d` can make `${HOME}` expand to the root user's home (`/root/.ares`). Docker mounts the wrong `.ares` directory instead of your real `~/.ares`. Fix by setting `ARES_HOME=/home/you/.ares`.
 
-The Web UI checks for updates on three repos:
-- **ARES** — this repo (`shuwalker/ARES`)
-- **Ares** — the agent engine (`NousResearch/ares-agent`)
-- **JaegerAI** — robotics/embodiment (`JenkinsRobotics/JaegerAI`)
-
-## Credits
-
-The ARES controller/Web UI stack (`services/controller/`, `apps/web/`) is forked from [ares-webui](https://github.com/nesquena/ares-webui) by the Ares Web UI Contributors, originally licensed under MIT. See `LICENSE` for ARES, `COMMERCIAL-LICENSE.md` for commercial licensing, and `services/controller/LICENSE` for the preserved upstream MIT notice.
+---
 
 ## Owner
 
 Matthew Jenkins (shuwalker) · Jenkins Robotics
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=shuwalker/ARES&type=date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=shuwalker/ARES&type=date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=shuwalker/ARES&type=date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=shuwalker/ARES&type=date" />
- </picture>
-</a>

@@ -14,7 +14,7 @@ override it.
 |------|------------|
 | **ARES** | **Only the application name** (product package: Mac app, WebUI, controller). Not a character, not an agent, not a second brain. |
 | **Companion** (SI) | **Everything that is not a worker.** The personal Synthetic Intelligence experience: identity, journal, context, routing, scoring, permissions, workspace, and how the person is spoken to. |
-| **Workers** | Models, agent frameworks, and tools that **execute** (Ollama, jros, Hermes, cloud LLMs, MCP servers, device tools). |
+| **Workers** | Models, agent frameworks, and tools that **execute** (Jaeger AI, Ollama, Hermes, cloud LLMs, MCP servers, device tools). |
 
 In product UI, the person talks to their **Companion**, not to “ARES.”
 Technical docs may say “the ARES app hosts the Companion.”
@@ -37,9 +37,8 @@ Mac-first, not Mac-only. Surfaces must not become incompatible products.
 ### Runtime architecture
 
 How the running system works — process topology, the two-store model, the chat
-round trip, and inherited assumptions still outstanding — is documented in
-[docs/architecture/RUNTIME.md](../docs/architecture/RUNTIME.md). Decisions with
-their reasoning live in [docs/decisions/](../docs/decisions/).
+round trip, and architecture decisions — is documented in
+[docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
 
 Two load-bearing rules from those documents: ARES invokes workers as
 **subprocesses** and never absorbs their execution loop, and ARES **never writes
@@ -49,7 +48,7 @@ resume it.
 ### Product surfaces (UI domains)
 
 Primary navigation and domain boundaries live in
-[docs/architecture/PRODUCT_SURFACES.md](../docs/architecture/PRODUCT_SURFACES.md).
+[docs/PRODUCT_SPEC.md](../docs/PRODUCT_SPEC.md).
 
 Near-term top-level surfaces:
 
@@ -77,7 +76,7 @@ is lost. The **Companion** (hosted by the ARES app) exists to:
 5. Help manage work and devices through workers when configured — without the
    Companion pretending to be the execution engine.
 
-A common use case: local model via **Ollama or jros** as a worker, which may
+A common use case: a local model via **Jaeger AI or Ollama** as a worker, which may
 call other agentic tools. That is one configuration, not the architecture.
 
 ## What the Companion owns (everything that is not a worker)
@@ -96,7 +95,7 @@ The Companion is the non-worker layer of the product:
 - Mac + WebUI product surfaces that host this experience.
 
 A Local Profile can be saved without any worker online. First-run **must force
-an explicit worker choice** (Ollama, jros, Hermes, cloud, or explicit
+an explicit worker choice** (Jaeger AI, Ollama, Hermes, cloud, or explicit
 “organizer only for now”). Nothing is pre-selected as a default worker.
 
 Profile readiness is not execution readiness:
@@ -122,7 +121,7 @@ Workers may have **session scratchpads** (Option B lease). Durable SI memory
 stays in the Companion journal (Option A source of truth). Scratchpads yield
 summaries/artifacts back; they do not become lifelong identity.
 
-No worker is the product identity. JaegerAI/jros, Hermes, Ollama, Claude,
+No worker is the product identity. Jaeger AI, Hermes, Ollama, Claude,
 Gemini, OpenAI, MCP servers are **named connections / workers**.
 
 ## Integration model
