@@ -31,11 +31,10 @@
 
 ### Execution Modes
 
-ARES supports three local execution paths:
+ARES supports two local execution paths:
 
 - **Developer Mode:** Run `swift run ARES` from the repository root to launch the native macOS shell wrapping the Web UI.
 - **Web Standalone Mode:** Run `./start.sh` from the repository root, then navigate to `http://localhost:8788`.
-- **Windows Companion Mode:** Launch the Web UI backend, then run `cargo tauri dev` from `ARES-Windows/`.
 
 ### Installation
 
@@ -70,26 +69,13 @@ cd ARES
 swift run ARES
 ```
 
-### Windows Companion App
-
-```powershell
-# Terminal 1: Backend Controller
-cd ARES/services/controller
-.\.venv\Scripts\python.exe server.py
-
-# Terminal 2: Windows Shell
-cd ARES/ARES-Windows
-cargo tauri dev
-```
-
 ---
 
 ## Features
 
 - **Unified Assistant Interface** — Integrates runtimes, models, tools, voice, character avatars, and system integrations into one coherent user experience.
-- **Runtime-Compatible Adapter Layer** — JaegerAI, Ares Agent, Ollama, and OpenAI/ChatGPT-compatible cloud providers connect seamlessly through adapters.
+- **Runtime-Compatible Adapter Layer** — Jaeger AI, Ares Agent, Ollama, and OpenAI/ChatGPT-compatible cloud providers connect through adapters.
 - **Mac-First Native Home** — Native SwiftUI app wrapping the Web UI in `WKWebView` with macOS system menu integrations.
-- **Windows Companion Shell** — Tauri application (`ARES-Windows/`) wrapping the Web UI for Windows desktop integration.
 - **Web UI Everywhere** — Self-contained FastAPI Python server with real-time streaming, session management, and password authentication.
 - **JaegerAI Embodiment Path** — Primary embodied runtime communicating through the local `jaeger bridge` protocol over stdio (NDJSON).
 - **Character Avatar Browser** — Schema-backed visual character personas with card art, traits, role, and lore data.
@@ -114,7 +100,6 @@ flowchart TD
     subgraph Presentation ["Presentation & Interfaces"]
         MacApp["Mac App (SwiftUI / WKWebView)"]
         WebUI["Web UI (React / Vite)"]
-        WinApp["Windows Companion (Tauri)"]
     end
 
     subgraph Controller ["Assistant Controller Platform"]
@@ -124,7 +109,7 @@ flowchart TD
     end
 
     subgraph Runtimes ["AI Runtimes & Providers"]
-        Jaeger["JaegerAI Runtime"]
+        Jaeger["Jaeger AI Runtime"]
         AresAgent["Ares Agent Runtime"]
         Cloud["OpenAI / Cloud Providers"]
     end
@@ -134,6 +119,8 @@ flowchart TD
 ```
 
 Detailed technical documentation is available in the [`docs/`](docs/README.md) directory.
+
+Coding agents and new contributors should begin with [`AGENTS.md`](AGENTS.md).
 
 ---
 
@@ -150,8 +137,7 @@ ARES/
 │   ├── api/               # Server logic, streaming, auth
 │   ├── fastapi_app/       # FastAPI application & HTTP/SSE routers
 │   └── requirements.txt   # Python dependencies
-├── docs/                  # Canonical engineering documentation
-└── ARES-Windows/          # Windows Companion Tauri app
+└── docs/                  # Canonical engineering documentation
 ```
 
 ---

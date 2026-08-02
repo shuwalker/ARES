@@ -4,7 +4,9 @@
 | :--- | :--- |
 | **Status** | Canonical System Reference |
 | **Audience** | Maintainers, System Engineers, AI Engineers |
-| **Last Updated** | July 2026 |
+| **Owner** | ARES architecture maintainers |
+| **Last verified** | 2026-08-01 |
+| **Source of truth** | Process boundaries, adapters, source modules, and contract tests |
 
 This document describes the machine architecture of ARES: process topology, system boundaries, decoupled state storage models, context assembly, and turn orchestration.
 
@@ -19,7 +21,6 @@ flowchart TD
     subgraph Client ["1. Client Layer"]
         ReactUI["React SPA / TypeScript (apps/web/)"]
         MacUI["Native macOS Shell (apps/macos/)"]
-        WinUI["Windows Companion Shell (ARES-Windows/)"]
     end
 
     subgraph Controller ["2. Assistant Controller Backend"]
@@ -40,7 +41,7 @@ flowchart TD
 
 ### Layer Responsibilities
 
-1. **Client Layer (`apps/web/`, `apps/macos/`)**: Single-page application presenting the user interface. Normalizes all backend API payloads through a strict contract translator (`apps/web/src/shared/translators.ts`).
+1. **Client Layer (`apps/web/`, `apps/macos/`)**: Web and native applications presenting the same ARES concepts. The Web UI normalizes backend payloads through `apps/web/src/shared/translators.ts`.
 2. **Assistant Controller (`services/controller/`)**: FastAPI application server handling request identity, authentication, session lifecycle, task planning, and context assembly.
 3. **AI Runtimes (`integrations/workers/`, `api/backends/`)**: External AI models and agent frameworks invoked as isolated subprocesses or API clients.
 

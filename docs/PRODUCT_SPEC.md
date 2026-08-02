@@ -4,7 +4,10 @@
 | :--- | :--- |
 | **Status** | Canonical Product Specification |
 | **Audience** | Developers, System Architects, Integration Engineers |
-| **Platform** | macOS, Web, Windows |
+| **Owner** | ARES product maintainers |
+| **Last verified** | 2026-08-01 |
+| **Source of truth** | Product surfaces, feature specifications, and acceptance tests |
+| **Platform** | macOS and Web; additional native clients are planned |
 
 This document defines the product architecture, core system capabilities, and personal organizer specifications for the ARES platform.
 
@@ -12,7 +15,7 @@ This document defines the product architecture, core system capabilities, and pe
 
 ## 1. Product System Overview
 
-ARES is a multi-surface platform hosting a persistent Personal Assistant Engine. The platform acts as a local-first control plane between the user and digital tools — maintaining context, enforcing data security rules, managing daily focus schedules, and delegating execution to pluggable AI runtimes without allowing external models to mutate state without authorization.
+ARES is a multi-surface platform hosting a persistent Synthetic Intelligence experience. The platform acts as a local-first control plane between the user and digital tools — maintaining context, enforcing data security rules, managing daily focus schedules, and delegating execution to pluggable AI runtimes without allowing external models to mutate state without authorization.
 
 ### Why ARES
 
@@ -23,6 +26,10 @@ Intelligence that can remember the user, act through explicit capabilities,
 show its work, and verify outcomes without tying the product to one model or
 worker. This separation is what makes ARES a personal assistant rather than a
 framework-branded chat client.
+
+Feature-level behavior and implementation status live under
+[`docs/features/`](features/README.md). The active SI Settings contract is
+[`features/si-personalization.md`](features/si-personalization.md).
 
 ---
 

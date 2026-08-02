@@ -4,7 +4,9 @@
 | :--- | :--- |
 | **Status** | Canonical Security Policy |
 | **Audience** | Security Engineers, System Administrators, Maintainers |
-| **Last Updated** | July 2026 |
+| **Owner** | ARES security and controller maintainers |
+| **Last verified** | 2026-08-01 |
+| **Source of truth** | Security policy, controller enforcement, and security tests |
 
 This document defines the security boundaries, data sensitivity classifications, trust rules, credential isolation, and approval policies enforced by ARES.
 

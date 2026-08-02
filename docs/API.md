@@ -1,15 +1,19 @@
-# REST & Realtime API Specification
+# Core REST & Realtime API Contracts
 
 | Attribute | Details |
 | :--- | :--- |
-| **Status** | Canonical API Reference Specification |
+| **Status** | Canonical core API contract; not an exhaustive route inventory |
 | **Transport** | HTTP/1.1 REST, Server-Sent Events (SSE) |
 | **Base URL** | `http://127.0.0.1:8788` |
 | **Content-Type** | `application/json`, `text/event-stream` |
 | **Audience** | Frontend Developers, SDK Authors, Integration Engineers |
-| **Last Updated** | July 2026 |
+| **Owner** | Controller and client-contract maintainers |
+| **Last verified** | 2026-08-01 |
+| **Source of truth** | `services/controller/fastapi_app/routers/`, schemas, and tests |
 
-This document provides the standard technical specification for all REST API endpoints, streaming protocols, error formats, and request/response schemas implemented by the ARES Assistant Controller server (`services/controller/fastapi_app/`).
+This document describes stable, product-relevant contracts implemented by the
+ARES controller. The router source and generated OpenAPI schema remain the
+complete route inventory.
 
 ---
 
@@ -276,3 +280,34 @@ Retrieves character visual avatar persona metadata cards.
   ]
 }
 ```
+
+---
+
+## 5. Settings API (`/api/settings`)
+
+### `GET /api/settings`
+
+Returns the authenticated profile's effective settings. Secret values are not
+part of this contract.
+
+### `POST /api/settings`
+
+Applies a partial authenticated settings update. Unknown, invalid, or
+out-of-range values are rejected or ignored according to controller validation;
+clients must read the response as the saved result rather than assuming every
+submitted value was accepted.
+
+SI personalization keys:
+
+| Key | Accepted value |
+| --- | --- |
+| `local_profile_character` | `grounded`, `warm`, `direct`, `curious` |
+| `si_cal_verbosity` | `concise`, `balanced`, `explanatory` |
+| `si_cal_tone` | `direct`, `balanced`, `conversational` |
+| `si_cal_support` | `supportive`, `balanced`, `challenging` |
+| `si_cal_initiative` | `reactive`, `balanced`, `proactive` |
+| `si_cal_notes` | String, trimmed, maximum 2,000 characters, no null byte |
+
+These are preference keys, not permission or autonomy controls. Their behavior
+contract and current implementation status are defined in
+[`features/si-personalization.md`](features/si-personalization.md).

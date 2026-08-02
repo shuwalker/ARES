@@ -1,36 +1,75 @@
-# ARES Repository Documentation
+# ARES Documentation Router
 
-| Attribute | Details |
-| :--- | :--- |
-| **Status** | Active / Canonical |
-| **Audience** | Developers, System Architects, Maintainers, Operators |
-| **Target Platform** | macOS, Linux/WSL, Web (React SPA) |
+| Attribute | Value |
+| --- | --- |
+| **Status** | Current / canonical index |
+| **Owner** | ARES maintainers |
+| **Last verified** | 2026-08-01 |
+| **Source of truth** | Documentation ownership and task routing |
 
-Welcome to the **ARES** engineering documentation repository. This directory contains the complete technical specifications, architectural designs, API reference guides, security policies, and developer manuals for the ARES platform.
+ARES documentation is development memory. It should let a new contributor
+understand the product, find the correct state owner, and verify a change
+without receiving a custom context prompt.
 
----
+Start with [`../AGENTS.md`](../AGENTS.md), then read only the documents routed
+for the task.
 
-## Standard Documentation Index
+## Canonical documents
 
-| File | Primary Focus |
-| :--- | :--- |
-| **[`ARCHITECTURE.md`](ARCHITECTURE.md)** | System architecture, process topology, component boundaries, decoupled state storage, and turn orchestration. |
-| **[`DEVELOPMENT.md`](DEVELOPMENT.md)** | Developer & operator guide: local environment setup, native macOS shell, Web UI, Windows/Tauri app, Docker, WSL, and troubleshooting. |
-| **[`SECURITY.md`](SECURITY.md)** | Data classification rules (`public` to `secret`), privacy boundaries, trust engine gates, credential handling, and local-only execution modes. |
-| **[`API.md`](API.md)** | Complete API reference: REST routers (`/api/organizer/*`, `/api/chat/*`, `/api/ares/*`), SSE streaming protocol, and schemas. |
-| **[`PRODUCT_SPEC.md`](PRODUCT_SPEC.md)** | Unified product vision, protocol-droid organizer capabilities, data models, and delivery roadmap. |
+| Document | Owns | Does not own |
+| --- | --- | --- |
+| [`PRODUCT_SPEC.md`](PRODUCT_SPEC.md) | User experience, vocabulary, surfaces, product ownership | Process topology or route schemas |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Processes, state, adapters, data flow, invariants | UI copy or milestone status |
+| [`API.md`](API.md) | Routes, settings keys, events, schemas | Product rationale |
+| [`SECURITY.md`](SECURITY.md) | Trust, secrets, permissions, external actions | General UI layout |
+| [`DEVELOPMENT.md`](DEVELOPMENT.md) | Setup, testing, packaging, contribution workflow | Product requirements |
+| [`CURRENT_STATE.md`](CURRENT_STATE.md) | Current milestone, delivered work, known gaps, next sequence | Permanent architecture decisions |
 
----
+## Task routing
 
-## Architectural Principles & Core Concepts
+| Task | Required context |
+| --- | --- |
+| Change tabs, labels, or feature ownership | Product spec + relevant [`features/`](features/README.md) spec |
+| Change controller state or runtime integration | Architecture + API + scoped controller instructions |
+| Add or change a setting | Feature spec + API + persistence/prompt tests |
+| Change permissions or data handling | Security + Architecture |
+| Change installation, CI, or Docker | Development + Current State |
+| Change a durable boundary | Existing [`decisions/`](decisions/README.md) records or a new ADR |
 
-- **Platform Core (Assistant Controller)**: The primary Python FastAPI backend (`services/controller/`) that manages persistent user state, context assembly, task planning, and runtime routing.
-- **AI Runtimes (Execution Engines)**: Pluggable AI model processes and external agents (Jaeger AI, Ollama, Claude Code, Hermes, and cloud LLMs) invoked as isolated subprocesses or API client bridges.
-- **Persistent Event Log & Task Store**: SQLite database (`webui_state/`) storing user sessions, message history, and task records with Full-Text Search (FTS5).
-- **Decoupled Read-Only State Pattern**: ARES writes exclusively to its own state storage. External AI runtime databases are accessed strictly in read-only mode (`?mode=ro`).
+## Feature specifications
 
----
+Feature specs translate product intent into code and acceptance evidence. They
+must distinguish implemented behavior from intended behavior.
 
-## Auxiliary Files
+- [`features/si-personalization.md`](features/si-personalization.md)
+- [`features/README.md`](features/README.md)
+- [`templates/feature-spec.md`](templates/feature-spec.md)
 
-- **`.nojekyll`**: Standard static site deployment file used by GitHub Pages to disable automatic Jekyll build processing for markdown repositories.
+## Decision records
+
+Accepted durable choices live under [`decisions/`](decisions/README.md). An ADR
+explains why a boundary exists and its consequences. It is not a changelog.
+
+## Controller compatibility contracts
+
+`services/controller/docs/` contains active, test-backed controller and
+upstream compatibility contracts. Root documents remain canonical for the ARES
+product, but controller documents must not be deleted until their runtime links
+and contract tests are migrated.
+
+## Freshness rules
+
+- Every canonical or feature document names its status, owner, last verification
+  date, and source of truth.
+- Update documentation in the same commit as a contract change.
+- Link code and tests instead of copying implementation detail into prose.
+- If source and docs disagree, report the drift; do not silently choose one.
+- Audits and proposals outside `docs/` are evidence, not authority.
+- Remove obsolete guidance or replace it with a compatibility pointer.
+- Update `CURRENT_STATE.md` at milestone boundaries, not after every small edit.
+
+## Review question
+
+Every pull request should answer: **Did this change alter product behavior,
+ownership, a setting, an API, a trust boundary, or an accepted decision?** If
+yes, name and update the owning document.

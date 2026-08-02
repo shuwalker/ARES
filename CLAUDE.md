@@ -1,11 +1,7 @@
-# ARES Rules
+# ARES Instructions for Claude-Compatible Agents
 
-Rules and instructions for ARES contributors and coding agents have been consolidated to:
-- Product and architecture foundation: [.claude/FOUNDATION.md](.claude/FOUNDATION.md)
-- Root rules: [.claude/CLAUDE.md](.claude/CLAUDE.md)
-- WebUI rules: [.claude/webui/CLAUDE.md](.claude/webui/CLAUDE.md)
+Read [`AGENTS.md`](AGENTS.md) before working in this repository. It is the
+canonical cross-agent entrypoint. Follow the scoped `AGENTS.md` nearest to the
+files you change and route task context through [`docs/README.md`](docs/README.md).
 
-This file intentionally stays at the repository root as a lightweight pointer.
-Many coding tools and agent runners discover `CLAUDE.md` automatically only at
-the repo root. The detailed rules live in the hidden `.claude/` folder so the
-root stays clean while automated tools still find the entry point.
+Do not create Claude-specific copies of product or architecture guidance.

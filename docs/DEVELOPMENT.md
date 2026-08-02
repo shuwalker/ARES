@@ -4,7 +4,9 @@
 | :--- | :--- |
 | **Status** | Active Operational Manual |
 | **Audience** | Developers, DevOps Engineers, System Administrators |
-| **Last Updated** | July 2026 |
+| **Owner** | ARES engineering maintainers |
+| **Last verified** | 2026-08-01 |
+| **Source of truth** | Install scripts, package manifests, workflows, and verification commands |
 
 This guide covers local environment setup, application execution paths, external provider registration, containerized deployments, WSL integration, and troubleshooting procedures.
 
@@ -27,17 +29,9 @@ Launches the Python FastAPI controller and React SPA web application:
 # Access the web UI at http://localhost:8788
 ```
 
-### Windows Companion App Mode
-Run the Web UI backend server, then launch the Tauri desktop wrapper:
-```powershell
-# Terminal 1: Controller Backend
-cd ARES/services/controller
-.\.venv\Scripts\python.exe server.py
-
-# Terminal 2: Windows Shell
-cd ARES/ARES-Windows
-cargo tauri dev
-```
+Additional native clients are planned, but this repository currently ships the
+macOS and Web paths above. Do not document an untracked client directory as an
+available execution mode.
 
 ---
 
@@ -220,3 +214,11 @@ must not silently redefine behavior without changing its public contract.
 This static coverage is advisory. It is not an automated policy gate and does not enforce PR-body content or replace review. A future release-time
 check may surface missing declarations, and each release batch should list its
 contract-affecting changes explicitly.
+
+### Documentation impact
+
+Start work at [`AGENTS.md`](../AGENTS.md) and route through
+[`docs/README.md`](README.md). A change must update its owning document when it
+alters product behavior, state ownership, a setting, an API, a trust boundary,
+or an accepted decision. Feature specifications must state what is implemented
+and what remains intended.
