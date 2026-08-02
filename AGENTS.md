@@ -19,7 +19,9 @@ permissions, task state, artifacts, routing, and verification. Replaceable
 workers such as Jaeger AI, Hermes, Codex, Claude, Ollama, and cloud models supply
 reasoning or execution.
 
-The user talks to one continuous SI. A worker is never the product identity.
+The product principle is **one identity, many workers**. The user talks to one
+continuous SI. ARES may plan work, create sessions, and delegate steps to
+specialist workers, but a worker is never the product identity.
 
 ## Non-negotiable boundaries
 
@@ -29,9 +31,10 @@ The user talks to one continuous SI. A worker is never the product identity.
 - Keep worker, model/provider, and tool selection as separate concerns.
 - New state and UI use `jaeger_local` and “Jaeger AI.” `jros` names are accepted
   only at explicit legacy-input boundaries.
-- Settings owns identity, presentation, conversation, and application
-  preferences. Control Center owns connections, health, memory/privacy,
-  permissions, autonomy, devices, and network reachability.
+- Settings owns stable configuration of the SI, presentation, conversation,
+  desktop application, and local ARES runtime. Control Center is the live
+  dashboard for agents, delegated work, AI tools, connected services, devices,
+  approvals, memory/privacy, and autonomy.
 - Settings is a utility destination, not a seventh environment.
 - Preserve user changes in a dirty worktree and avoid unrelated rewrites.
 
@@ -43,7 +46,7 @@ The primary environments are:
 
 The Settings utility contains:
 
-`SI | Appearance | Chat | App`
+`SI | Appearance | Chat | App` (the planned product label for App is `System`)
 
 See [Product Specification](docs/PRODUCT_SPEC.md) and the relevant feature
 specification before changing navigation or ownership.
@@ -70,6 +73,8 @@ specification before changing navigation or ownership.
 | Setup, tests, packaging, or deployment | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) |
 | Current milestone or known gaps | [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) |
 | SI Settings | [`docs/features/si-personalization.md`](docs/features/si-personalization.md) |
+| App/System Settings | [`docs/features/system-settings.md`](docs/features/system-settings.md) |
+| Agent delegation or orchestration | [`docs/features/multi-agent-orchestration.md`](docs/features/multi-agent-orchestration.md) |
 
 When documents disagree, do not choose silently. Source and tests describe
 implemented behavior; accepted architecture/decision records describe required

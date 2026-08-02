@@ -24,6 +24,8 @@ def test_cross_agent_entrypoint_routes_canonical_context():
         "docs/DEVELOPMENT.md",
         "docs/CURRENT_STATE.md",
         "docs/features/si-personalization.md",
+        "docs/features/system-settings.md",
+        "docs/features/multi-agent-orchestration.md",
     ):
         assert required in entrypoint
         assert (ROOT / required).exists()
@@ -71,6 +73,24 @@ def test_si_feature_spec_is_actionable_and_honest():
     assert "services/controller/api/streaming.py" in spec
 
 
+def test_system_and_multi_agent_product_models_are_canonical():
+    entrypoint = _read("AGENTS.md")
+    product = _read("docs/PRODUCT_SPEC.md")
+    system = _read("docs/features/system-settings.md")
+    orchestration = _read("docs/features/multi-agent-orchestration.md")
+
+    assert "one identity, many workers" in entrypoint.lower()
+    assert "one identity, many workers" in product.lower()
+    assert "one identity, many workers" in orchestration.lower()
+    assert "Launch at login" in system
+    assert "Global quick-launch" in system
+    assert "local ares controller" in system.lower()
+    assert "Control Center owns live agents" in system
+    assert "partially implemented" in system.lower()
+    assert "partially implemented" in orchestration.lower()
+    assert "services/controller/api/si/orchestrator.py" in orchestration
+
+
 def test_current_surface_contract_does_not_use_obsolete_foundation_navigation():
     entrypoint = _read("AGENTS.md")
     foundation = _read(".claude/FOUNDATION.md")
@@ -89,6 +109,8 @@ def test_agent_onboarding_documents_have_no_broken_relative_links():
         "docs/CURRENT_STATE.md",
         "docs/features/README.md",
         "docs/features/si-personalization.md",
+        "docs/features/system-settings.md",
+        "docs/features/multi-agent-orchestration.md",
         "apps/web/AGENTS.md",
         "apps/macos/AGENTS.md",
         "services/controller/AGENTS.md",

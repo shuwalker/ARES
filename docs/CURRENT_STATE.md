@@ -21,6 +21,8 @@ Implemented on the active functional branch:
 - Six product environments plus standalone Settings.
 - Settings sections: SI, Appearance, Chat, App.
 - Memory/privacy and permissions/autonomy moved to Control Center.
+- Controller planner, worker registry, persisted plan state, and orchestration
+  tests provide an initial multi-agent foundation.
 - Studio routes and initial state model.
 - Canonical `jaeger_local` backend identity with legacy input normalization.
 - Native and Web launcher isolation between ARES and legacy Hermes services.
@@ -32,6 +34,8 @@ Implemented on the active functional branch:
 | --- | --- | --- |
 | SI calibration values persist but are not yet assembled into worker system instructions. | Controls appear functional without changing responses. | Prompt-rendering unit tests and end-to-end prompt assembly test. |
 | SI Settings still contains a large architecture lesson and detailed Jaeger infrastructure card. | Personalization feels technical and duplicates Control Center. | Layout/copy acceptance criteria in `features/si-personalization.md`. |
+| App is not yet the planned System settings experience. | Menu-bar, shortcuts, background service, and local runtime controls are incomplete or fragmented. | `features/system-settings.md` acceptance criteria. |
+| Multi-agent primitives are not yet presented as one coherent ARES delegation experience. | Users may see workers or sessions without understanding their relationship to ARES. | `features/multi-agent-orchestration.md` and end-to-end delegation evidence. |
 | Docker and GitHub CI still reference the pre-reorganization `frontend/` layout or omit controller requirements. | Draft PR checks fail before meaningful execution. | Root-context Docker build and green dependency installation. |
 | The complete inherited controller suite contains legacy failures after the repository move. | A broad pass is not yet a clean release gate. | Separate stabilization batch with failures grouped by owner. |
 | JaegerAI `master` has local commits and is behind its remote. | Cross-repository work is unsafe until reconciled. | Separate Jaeger safety branch; no ARES-driven mutation. |
@@ -49,6 +53,9 @@ Machine-specific values are diagnostic context, not portable defaults.
 
 1. Make the documentation system and SI personalization contract canonical.
 2. Implement and test calibration prompt assembly and the SI page refinement.
-3. Repair Docker/CI paths from the repository reorganization.
-4. Stabilize remaining ARES functionality.
-5. Reconcile JaegerAI separately before unified tray/menu integration.
+3. Build the System settings contract around native app and local runtime
+   controls.
+4. Connect existing orchestration primitives to the one-identity, many-workers
+   session experience.
+5. Repair Docker/CI paths and stabilize remaining ARES functionality.
+6. Reconcile JaegerAI separately before unified tray/menu integration.

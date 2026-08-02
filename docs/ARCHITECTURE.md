@@ -124,6 +124,20 @@ These decisions replace the retired ADR directory. They are part of the
 canonical architecture and should be changed only through an intentional
 architecture review.
 
+### One identity coordinates many workers
+
+ARES owns the user-facing SI identity, product sessions, plans, permissions,
+artifacts, and verification. It may decompose a request and delegate bounded
+steps to multiple external workers, including parallel steps when they are
+independent. The Agent surface keeps this interaction coherent; Control Center
+exposes detailed live execution when the user needs it.
+
+Workers never become competing product identities. Each delegated step retains
+its worker/model/tool provenance, while ARES preserves the relationship between
+the original request, specialist sessions, artifacts, and combined result. See
+`docs/features/multi-agent-orchestration.md` for the product contract and
+implementation status.
+
 ### Workers execute out of process
 
 ARES supports independently versioned workers such as Jaeger AI, Hermes,

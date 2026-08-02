@@ -27,6 +27,11 @@ show its work, and verify outcomes without tying the product to one model or
 worker. This separation is what makes ARES a personal assistant rather than a
 framework-branded chat client.
 
+The interaction model is **one identity, many workers**. The user asks ARES,
+not a swarm. ARES decides whether to respond directly or delegate bounded work
+to specialist agents, keeps that work organized in sessions, and returns a
+coherent result under the same identity.
+
 Feature-level behavior and implementation status live under
 [`docs/features/`](features/README.md). The active SI Settings contract is
 [`features/si-personalization.md`](features/si-personalization.md).
@@ -95,13 +100,28 @@ framework-branded applications.
 | **Studio** | Image, video, audio, 3D, and other creative production workflows. |
 | **Life** | Tasks, routines, goals, schedules, and personal organization. |
 | **Library** | User-owned knowledge, documents, collections, and artifacts. |
-| **Control Center** | Connections, infrastructure, health, memory policy, permissions, and autonomy. |
-| **Settings** | Personal presentation and application preferences; a utility destination, not a seventh environment. |
+| **Control Center** | Live agents, delegated tasks, AI tools, connected services, devices, approvals, memory/privacy, autonomy, activity, and alerts. |
+| **Settings** | Stable SI, presentation, conversation, desktop-app, and local ARES runtime configuration; a utility destination, not a seventh environment. |
 
 The Companion is the continuous Synthetic Intelligence experience hosted by
 ARES. Workers such as Jaeger AI, Hermes, Ollama, Claude, and Codex execute
 turns but do not become the product identity. Changing a worker must not rename
 the Companion, move the session, or change the navigation model.
+
+### Multi-agent experience
+
+- The normal interface presents one ARES conversation and identity.
+- ARES may create specialist work sessions when a request needs research,
+  coding, creation, device control, or parallel execution.
+- Settings chooses durable defaults such as delegation posture, preferred
+  capabilities, and concurrency limits.
+- Control Center shows active workers, plans, task progress, approvals,
+  failures, and results.
+- Worker provenance remains inspectable without making users operate a swarm
+  for ordinary requests.
+
+See [`features/multi-agent-orchestration.md`](features/multi-agent-orchestration.md)
+and [`features/system-settings.md`](features/system-settings.md).
 
 ## 5. Readiness Model
 

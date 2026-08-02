@@ -32,6 +32,8 @@ for the task.
 | Change tabs, labels, or feature ownership | Product spec + relevant [`features/`](features/README.md) spec |
 | Change controller state or runtime integration | Architecture + API + scoped controller instructions |
 | Add or change a setting | Feature spec + API + persistence/prompt tests |
+| Change agent delegation or sessions | Multi-agent spec + Architecture + API |
+| Change native app or local service settings | System Settings spec + Development + API |
 | Change permissions or data handling | Security + Architecture |
 | Change installation, CI, or Docker | Development + Current State |
 | Change a durable boundary | Existing [`decisions/`](decisions/README.md) records or a new ADR |
@@ -42,6 +44,8 @@ Feature specs translate product intent into code and acceptance evidence. They
 must distinguish implemented behavior from intended behavior.
 
 - [`features/si-personalization.md`](features/si-personalization.md)
+- [`features/system-settings.md`](features/system-settings.md)
+- [`features/multi-agent-orchestration.md`](features/multi-agent-orchestration.md)
 - [`features/README.md`](features/README.md)
 - [`templates/feature-spec.md`](templates/feature-spec.md)
 

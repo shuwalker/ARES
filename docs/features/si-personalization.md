@@ -21,12 +21,12 @@ application hosting that experience.
 
 | SI Settings owns | Control Center owns |
 | --- | --- |
-| What the SI calls the user | Connected workers and providers |
-| SI display name | Gateway URLs and transport health |
+| What the SI calls the user | Active agents, workers, and delegated tasks |
+| SI display name | AI tools, providers, and connection health |
 | Voice preference | Memory indexing and privacy policy |
 | Personality base | Permissions and approvals |
 | Communication calibration | Autonomy and device/network reachability |
-| Additional personal guidance | Worker reset, installation, and diagnostics |
+| Additional personal guidance | Worker activity, setup, and diagnostics |
 
 Calibration changes communication behavior. It never grants a permission,
 changes data-retention policy, or silently selects a worker.
@@ -42,7 +42,8 @@ changes data-retention policy, or silently selects a worker.
 3. **Behavior** — detail level, tone, challenge style, initiative, and personal
    guidance. Explain each control in ordinary language.
 4. **Active worker** — one compact status row and a link to Control Center.
-   Gateway, instance, reset, and setup controls do not render here.
+   Worker setup and diagnostics do not render here. Local ARES application and
+   service controls belong in System Settings.
 5. **Advanced identity** — when implemented, link to Hatchery for deeper
    persona construction rather than expanding basic Settings indefinitely.
 
