@@ -20,9 +20,7 @@ import {
   asBool,
   asString,
   downloadBlob,
-  MENUBAR_HINT_KEY,
   readDensity,
-  readMenubarHints,
   SKINS,
   WEBUI_DENSITY_KEY,
 } from "./helpers";
@@ -49,7 +47,6 @@ export function useSettingsController() {
   const [profileSaved, setProfileSaved] = useState(false);
 
   const [density, setDensity] = useState<Density>(() => readDensity());
-  const [menubarHints, setMenubarHints] = useState(() => readMenubarHints());
   const [island, setIsland] = useState<IslandBackdropSettings>(() => readIslandSettings());
 
   const updateIsland = useCallback((patch: Partial<IslandBackdropSettings>) => {
@@ -143,14 +140,6 @@ export function useSettingsController() {
       /* ignore */
     }
   }, [density]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(MENUBAR_HINT_KEY, menubarHints ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-  }, [menubarHints]);
 
   useEffect(() => {
     if (section !== "app") return;
@@ -487,8 +476,6 @@ export function useSettingsController() {
     profileSaved,
     density,
     setDensity,
-    menubarHints,
-    setMenubarHints,
     island,
     updateIsland,
     newPassword,

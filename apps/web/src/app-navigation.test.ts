@@ -100,7 +100,7 @@ describe("sectionForPath ownership", () => {
 describe("settings section model", () => {
   it("exposes only the four utility sections with SI first", () => {
     expect(SETTINGS_SECTIONS.map((s) => s.id)).toEqual(["si", "appearance", "chat", "app"]);
-    expect(SETTINGS_SECTIONS.map((s) => s.label)).toEqual(["SI", "Appearance", "Chat", "App"]);
+    expect(SETTINGS_SECTIONS.map((s) => s.label)).toEqual(["SI", "Appearance", "Chat", "System"]);
   });
 
   it("normalizes legacy deep-links without losing preferences", () => {

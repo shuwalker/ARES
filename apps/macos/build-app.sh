@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_DIR="$(dirname "$PROJECT_DIR")"
+REPO_DIR="$(cd "$PROJECT_DIR/../.." && pwd)"
 CONFIGURATION="${CONFIGURATION:-release}"
 APP_NAME="ARES"
 APP_BUNDLE="$PROJECT_DIR/$APP_NAME.app"

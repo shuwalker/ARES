@@ -282,7 +282,9 @@ public struct ARESSettingsView: View {
                 TextField("WebUI Port", value: $config.webuiPort, formatter: NumberFormatter())
                     .textFieldStyle(.roundedBorder)
                     
-                Toggle("Start WebUI Server on App Launch", isOn: $config.autoLaunchOnStart)
+                Text("The ARES Mac app owns and starts this controller. Background behavior is configured in Web Settings → System.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 Toggle("Enable Live Reload / Dev Mode", isOn: $config.reloadDevMode)
             }
 

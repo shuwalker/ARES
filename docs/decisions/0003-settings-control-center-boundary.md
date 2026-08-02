@@ -28,8 +28,8 @@ avoids duplicated controls without hiding the system's capabilities.
 
 - Settings remains a utility, not a product environment.
 - Memory/privacy and permissions/autonomy remain in Control Center.
-- The App section is intended to become **System** as native and runtime
-  controls are implemented.
+- The application settings section is named **System**. Its legacy `app`
+  deep-link identifier remains compatible.
 - Local ARES service configuration and restart/reset actions live in System
   Settings; live agent, worker, tool, and device operations live in Control
   Center.

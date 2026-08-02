@@ -20,5 +20,5 @@ Read the repository [`AGENTS.md`](../../AGENTS.md) first.
 
 ## Verification
 
-Run `swift test` from the repository root. Use `./ARES-Mac_os/build-app.sh` only
+Run `swift test` from the repository root. Use `./apps/macos/build-app.sh` only
 when packaging or app-bundle behavior changes.

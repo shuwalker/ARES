@@ -28,8 +28,8 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   },
   {
     id: "app",
-    label: "App",
-    description: "Access, updates, extensions, and device prefs.",
+    label: "System",
+    description: "Desktop integration, local runtime, access, and updates.",
     icon: AppWindow,
   },
 ];
@@ -69,7 +69,8 @@ export const SETTINGS_SEARCH_CATALOG: SearchHit[] = [
   { section: "app", label: "Updates", keywords: "version update channel" },
   { section: "app", label: "Plugins", keywords: "plugin hooks" },
   { section: "app", label: "Extensions", keywords: "extension gallery install" },
-  { section: "app", label: "Mac menu bar", keywords: "menubar mac app device" },
+  { section: "app", label: "Desktop integration", keywords: "menu bar mac app launch login shortcut background" },
+  { section: "app", label: "Local ARES controller", keywords: "server runtime restart port status" },
   { section: "app", label: "Advanced settings", keywords: "config raw keys advanced control center" },
 ];
 

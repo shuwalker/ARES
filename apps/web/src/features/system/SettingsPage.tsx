@@ -6,10 +6,10 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 import { AppearanceSection } from "@/features/settings/AppearanceSection";
-import { AppSection } from "@/features/settings/AppSection";
 import { ChatSection } from "@/features/settings/ChatSection";
 import { SETTINGS_SECTIONS } from "@/features/settings/constants";
 import { SISection } from "@/features/settings/SISection";
+import { SystemSection } from "@/features/settings/SystemSection";
 import { useSettingsController } from "@/features/settings/useSettingsController";
 
 /**
@@ -78,13 +78,10 @@ export function SettingsPage() {
         );
       case "app":
         return (
-          <AppSection
-            snapshot={ctrl.snapshot}
+          <SystemSection
             settings={ctrl.settings}
             setBool={ctrl.setBool}
             setStr={ctrl.setStr}
-            menubarHints={ctrl.menubarHints}
-            setMenubarHints={ctrl.setMenubarHints}
             newPassword={ctrl.newPassword}
             setNewPassword={ctrl.setNewPassword}
             currentPassword={ctrl.currentPassword}

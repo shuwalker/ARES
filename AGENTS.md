@@ -46,7 +46,7 @@ The primary environments are:
 
 The Settings utility contains:
 
-`SI | Appearance | Chat | App` (the planned product label for App is `System`)
+`SI | Appearance | Chat | System`
 
 See [Product Specification](docs/PRODUCT_SPEC.md) and the relevant feature
 specification before changing navigation or ownership.

@@ -1,7 +1,6 @@
 import type { Density, FontSize, ThemeChoice } from "./types";
 
 export const WEBUI_DENSITY_KEY = "ares.webui.density";
-export const MENUBAR_HINT_KEY = "ares.mac.menubar-hints";
 
 export const SKINS = [
   "default",
@@ -39,14 +38,6 @@ export function readDensity(): Density {
     return localStorage.getItem(WEBUI_DENSITY_KEY) === "compact" ? "compact" : "comfortable";
   } catch {
     return "comfortable";
-  }
-}
-
-export function readMenubarHints(): boolean {
-  try {
-    return localStorage.getItem(MENUBAR_HINT_KEY) !== "0";
-  } catch {
-    return true;
   }
 }
 

@@ -17,6 +17,11 @@ import {
   translateWorkspaceEntries,
   translateWorkspaces,
 } from "@/shared/translators";
+import {
+  nativeSettingsPatch,
+  parseNativeSystemStatus,
+  type NativeSystemSettingsPatch,
+} from "@/shared/system-settings-contract";
 
 // ── Session search result ─────────────────────────────────────────────
 export interface SessionSearchResult {
@@ -587,6 +592,24 @@ export const aresApi = {
 
   async systemHealth() {
     return apiFetch<Record<string, unknown>>("/health");
+  },
+
+  async nativeSystemGet() {
+    return parseNativeSystemStatus(await apiFetch("/api/system/native"));
+  },
+
+  async nativeSystemPatch(patch: NativeSystemSettingsPatch) {
+    return parseNativeSystemStatus(await apiFetch("/api/system/native/settings", {
+      method: "PATCH",
+      body: JSON.stringify(nativeSettingsPatch(patch)),
+    }));
+  },
+
+  async nativeSystemAction(action: "restart_server") {
+    return apiFetch<{ accepted: boolean; command_id: string; action: string }>(
+      "/api/system/native/actions",
+      { method: "POST", body: JSON.stringify({ action }) },
+    );
   },
 
   async restartGateway() {

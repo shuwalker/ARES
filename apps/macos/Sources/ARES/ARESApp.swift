@@ -268,6 +268,7 @@ struct WebViewRepresentable: NSViewRepresentable {
 @MainActor
 final class ARESAppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarController: ARESMenuBarController?
+    private let quickLaunchMonitor = ARESGlobalQuickLaunchMonitor()
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
@@ -279,13 +280,30 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         // prevent the main WebUI window from becoming visible.
         NSApp.setActivationPolicy(.regular)
 
-        let config = ARESConfiguration.shared
-        if config.autoLaunchOnStart {
-            Task {
-                await WebUIServerManager.shared.start()
+        NativeSystemBridge.shared.start(
+            serverManager: WebUIServerManager.shared,
+            applyMenuBar: { [weak self] enabled in
+                self?.setMenuBarEnabled(enabled) ?? false
+            },
+            applyQuickLaunch: { [weak self] enabled, shortcut in
+                guard let self else { return false }
+                return self.quickLaunchMonitor.apply(enabled: enabled, shortcut: shortcut) { [weak self] in
+                    self?.openMainWindow()
+                }
+            },
+            applyBackgroundOperation: { enabled in
+                // The app delegate reads this desired value when the final
+                // window closes. Returning it records the effective policy.
+                enabled
+            },
+            restartServer: {
+                Task { await WebUIServerManager.shared.restart() }
             }
+        )
+
+        Task {
+            await WebUIServerManager.shared.start()
         }
-        setupMenuBar()
 
         DispatchQueue.main.async {
             NSApp.activate(ignoringOtherApps: true)
@@ -309,6 +327,9 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
 
     func openMainWindow() {
         NSApp.setActivationPolicy(.regular)
+        if !WebUIServerManager.shared.isRunning {
+            Task { await WebUIServerManager.shared.start() }
+        }
         ARESWindowCoordinator.shared.openMainWindow()
         NSApp.activate(ignoringOtherApps: true)
 
@@ -328,6 +349,9 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             let visibleWindows = NSApp.windows.filter { $0.isVisible && $0.className != "NSStatusBarWindow" }
             if visibleWindows.isEmpty {
+                if !NativeSystemBridge.shared.desired.backgroundOperation {
+                    WebUIServerManager.shared.stop()
+                }
                 // Keep .regular policy so clicking the Dock icon or app bundle always brings back the window
                 NSApp.setActivationPolicy(.regular)
             }
@@ -335,6 +359,8 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        NativeSystemBridge.shared.stop()
+        quickLaunchMonitor.stop()
         WebUIServerManager.shared.stop()
     }
 
@@ -344,8 +370,14 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    private func setupMenuBar() {
-        menuBarController = ARESMenuBarController()
+    private func setMenuBarEnabled(_ enabled: Bool) -> Bool {
+        if enabled, menuBarController == nil {
+            menuBarController = ARESMenuBarController()
+        } else if !enabled, let menuBarController {
+            menuBarController.invalidate()
+            self.menuBarController = nil
+        }
+        return menuBarController != nil
     }
 }
 
@@ -391,6 +423,15 @@ final class ARESMenuBarController: NSObject {
         menu.addItem(item("Quit ARES", #selector(terminate), "q"))
 
         statusItem?.menu = menu
+    }
+
+    func invalidate() {
+        if let statusItem {
+            NSStatusBar.system.removeStatusItem(statusItem)
+        }
+        statusItem = nil
+        popover?.close()
+        popover = nil
     }
 
     @objc private func togglePopover() {

@@ -44,10 +44,16 @@ const MOVED_CONTROL_KEYS = [
 ] as const;
 
 describe("settings ownership split", () => {
-  it("keeps Settings limited to SI, Appearance, Chat, App", () => {
+  it("keeps Settings limited to SI, Appearance, Chat, System", () => {
     expect(SETTINGS_SECTIONS).toHaveLength(4);
     expect(SETTINGS_SECTIONS.map((s) => s.id)).toEqual(["si", "appearance", "chat", "app"]);
     expect(SETTINGS_SECTIONS[0]?.label).toBe("SI");
+    expect(SETTINGS_SECTIONS.map((section) => section.label)).toEqual([
+      "SI",
+      "Appearance",
+      "Chat",
+      "System",
+    ]);
   });
 
   it("normalizes legacy you/preferences deep-links to si", () => {

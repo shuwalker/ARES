@@ -311,3 +311,44 @@ SI personalization keys:
 These are preference keys, not permission or autonomy controls. Their behavior
 contract and current implementation status are defined in
 [`features/si-personalization.md`](features/si-personalization.md).
+
+## 6. Native System API (`/api/system/native`)
+
+This device-global contract separates requested preferences from state observed
+by the native ARES app. It does not use profile settings or browser storage.
+
+### `GET /api/system/native`
+
+Returns:
+
+- Native app connection, PID, heartbeat, and per-launch instance ID.
+- Controller PID, host, port, runtime owner, and ownership instance ID.
+- `desired` native settings written by the controller.
+- `effective` values reported by the macOS app.
+- Capability flags used to disable unavailable controls honestly.
+
+The native app is connected only when its heartbeat is fresh and its instance
+ID matches the Mac-owned controller environment.
+
+### `PATCH /api/system/native/settings`
+
+Accepts a strict partial update containing:
+
+| Key | Type |
+| --- | --- |
+| `menu_bar_enabled` | boolean |
+| `launch_at_login` | boolean |
+| `quick_launch_enabled` | boolean |
+| `quick_launch_shortcut` | bounded string |
+| `background_operation` | boolean |
+
+The request returns `409` and does not persist a fake success when the native
+app is disconnected.
+
+### `POST /api/system/native/actions`
+
+Currently accepts `{"action":"restart_server"}`. The controller writes a
+bounded command for the matching native instance. ARES.app consumes it before
+restarting the child controller, preventing replay after restart.
+
+See [`features/system-settings.md`](features/system-settings.md).

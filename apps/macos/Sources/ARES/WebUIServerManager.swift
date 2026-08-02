@@ -42,32 +42,13 @@ public final class WebUIServerManager: ObservableObject {
         
         serverHealth = "Checking port..."
 
-        // ARES may already be running under the com.ares.webui launch service.
-        // Adopt that healthy server instead of killing it and racing launchd's
-        // automatic restart with a second Uvicorn process.
+        // The native app is the sole owner of this controller lifecycle. Never
+        // adopt an unrelated or orphaned process merely because it answers an
+        // ARES health check on the configured port.
         let inUse = await isPortInUse(port, host: host)
         if inUse {
-            let urlString = "http://\(host):\(port)/health"
-            if let url = URL(string: urlString) {
-                var request = URLRequest(url: url)
-                request.timeoutInterval = 1.0
-                do {
-                    let (data, response) = try await URLSession.shared.data(for: request)
-                    if let httpResp = response as? HTTPURLResponse,
-                       Self.isAresHealthResponse(statusCode: httpResp.statusCode, data: data) {
-                        self.isRunning = true
-                        self.process = nil
-                        self.serverHealth = "Running (External)"
-                        self.portConflict = false
-                        print("[ARES] Found running external WebUI server on http://\(host):\(port)")
-                        return
-                    }
-                } catch {
-                    // Ignore, fallback to port conflict
-                }
-            }
             portConflict = true
-            serverHealth = "Port \(port) conflict detected"
+            serverHealth = "Port \(port) is owned by another process"
             return
         }
         portConflict = false
@@ -92,9 +73,14 @@ public final class WebUIServerManager: ObservableObject {
         process.arguments = ["-m", "uvicorn", "fastapi_app.main:app", "--port", String(port), "--host", host]
         
         var env = ProcessInfo.processInfo.environment
-        env["ARES_WEBUI_HOST"] = host
-        env["ARES_WEBUI_PORT"] = String(port)
-        env["ARES_WEBUI_RELOAD"] = config.reloadDevMode ? "1" : "0"
+        env = Self.applyingNativeRuntimeEnvironment(
+            to: env,
+            host: host,
+            port: port,
+            reloadDevMode: config.reloadDevMode,
+            instanceID: NativeSystemBridge.shared.instanceID,
+            stateDirectory: config.configDirectory
+        )
         env = Self.applyingGatewayEnvironment(
             to: env,
             hermesURL: config.hermesURL,
@@ -132,7 +118,7 @@ public final class WebUIServerManager: ObservableObject {
             try process.run()
             self.process = process
             self.isRunning = true
-            self.serverHealth = "Running (Healthy)"
+            self.serverHealth = "Starting..."
             print("[ARES] WebUI server started on http://\(host):\(port)")
         } catch {
             self.serverHealth = "Failed: \(error.localizedDescription)"
@@ -187,6 +173,24 @@ public final class WebUIServerManager: ObservableObject {
         return environment
     }
 
+    nonisolated static func applyingNativeRuntimeEnvironment(
+        to base: [String: String],
+        host: String,
+        port: Int,
+        reloadDevMode: Bool,
+        instanceID: String,
+        stateDirectory: URL
+    ) -> [String: String] {
+        var environment = base
+        environment["ARES_WEBUI_HOST"] = host
+        environment["ARES_WEBUI_PORT"] = String(port)
+        environment["ARES_WEBUI_RELOAD"] = reloadDevMode ? "1" : "0"
+        environment["ARES_RUNTIME_OWNER"] = "mac_app"
+        environment["ARES_RUNTIME_INSTANCE_ID"] = instanceID
+        environment["ARES_NATIVE_STATE_DIR"] = stateDirectory.path
+        return environment
+    }
+
     /// True when the configured Hermes gateway URL points at this machine —
     /// local installs detect the gateway via PID/state files, not HTTP.
     nonisolated static func isLocalGatewayURL(_ raw: String) -> Bool {
@@ -217,10 +221,12 @@ public final class WebUIServerManager: ObservableObject {
             process = nil
         }
 
-        // A duplicate child can lose a startup race to the launchd-managed
-        // ARES server. Probe the actual service before treating that child
-        // exit as an application failure.
         guard isRunning || exitedProcess != nil else {
+            return
+        }
+
+        if let exitedProcess {
+            recordHealthFailure(exitedProcess: exitedProcess, fallback: "Exited")
             return
         }
 
@@ -236,7 +242,7 @@ public final class WebUIServerManager: ObservableObject {
             if let httpResp = response as? HTTPURLResponse,
                Self.isAresHealthResponse(statusCode: httpResp.statusCode, data: data) {
                 isRunning = true
-                serverHealth = process == nil ? "Running (External)" : "Running (Healthy)"
+                serverHealth = "Running (Healthy)"
             } else {
                 recordHealthFailure(exitedProcess: exitedProcess, fallback: "Running (Degraded)")
             }
@@ -336,7 +342,10 @@ public final class WebUIServerManager: ObservableObject {
             candidates.append(resourceURL.appendingPathComponent("webui")) // legacy path
         }
         var directory = executableURL?.deletingLastPathComponent()
-        for _ in 0..<5 {
+        // A development bundle lives at apps/macos/ARES.app; reaching the
+        // repository root from Contents/MacOS requires walking beyond the app
+        // wrapper and both source-layout directories.
+        for _ in 0..<8 {
             guard let current = directory else { break }
             candidates.append(current.appendingPathComponent("services/controller"))
             candidates.append(current.appendingPathComponent("webui")) // legacy path

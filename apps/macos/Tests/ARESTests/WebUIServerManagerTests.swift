@@ -56,6 +56,25 @@ final class WebUIServerManagerTests: XCTestCase {
         XCTAssertEqual(environment["UNCHANGED"], "yes")
     }
 
+    func testNativeRuntimeEnvironmentProvesMacAppOwnership() {
+        let environment = WebUIServerManager.applyingNativeRuntimeEnvironment(
+            to: ["UNCHANGED": "yes", "ARES_RUNTIME_OWNER": "standalone"],
+            host: "127.0.0.1",
+            port: 8788,
+            reloadDevMode: false,
+            instanceID: "mac-instance",
+            stateDirectory: URL(fileURLWithPath: "/tmp/ares-native")
+        )
+
+        XCTAssertEqual(environment["ARES_RUNTIME_OWNER"], "mac_app")
+        XCTAssertEqual(environment["ARES_RUNTIME_INSTANCE_ID"], "mac-instance")
+        XCTAssertEqual(environment["ARES_NATIVE_STATE_DIR"], "/tmp/ares-native")
+        XCTAssertEqual(environment["ARES_WEBUI_HOST"], "127.0.0.1")
+        XCTAssertEqual(environment["ARES_WEBUI_PORT"], "8788")
+        XCTAssertEqual(environment["ARES_WEBUI_RELOAD"], "0")
+        XCTAssertEqual(environment["UNCHANGED"], "yes")
+    }
+
     func testLocalGatewayURLDoesNotForceRemoteHealthProbing() {
         // A loopback Hermes URL must not export ARES_API_URL — that flips the
         // controller's agent health into remote-HTTP probing and skips the
@@ -164,6 +183,20 @@ final class WebUIServerManagerTests: XCTestCase {
         XCTAssertEqual(candidates[3].path, "/tmp/isolated-ares/webui") // legacy
         XCTAssertEqual(candidates[4].path, "/Users/example/.ares/services/controller")
         XCTAssertEqual(candidates[5].path, "/Users/example/.ares/webui") // legacy
+    }
+
+    func testDevelopmentAppBundleDiscoversRepositoryController() {
+        let candidates = WebUIServerManager.webUICandidates(
+            resourceURL: URL(fileURLWithPath: "/Users/tester/GitHub/ARES/apps/macos/ARES.app/Contents/Resources"),
+            executableURL: URL(fileURLWithPath: "/Users/tester/GitHub/ARES/apps/macos/ARES.app/Contents/MacOS/ARES"),
+            homeDirectory: URL(fileURLWithPath: "/Users/tester"),
+            environment: [:],
+            currentDirectory: "/"
+        )
+
+        XCTAssertTrue(
+            candidates.contains(URL(fileURLWithPath: "/Users/tester/GitHub/ARES/services/controller"))
+        )
     }
 
     func testAresHealthResponseRequiresHealthyAresPayload() throws {

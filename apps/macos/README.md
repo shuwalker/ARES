@@ -1,52 +1,40 @@
 # ARES Desktop
 
-ARES Desktop is the native macOS control shell for the ARES Web UI and adapter
-layer. It launches or attaches to the local Web UI, presents it in a `WKWebView`,
-and provides native settings, menu bar status, server control, remote access,
-runtime status, and approval surfaces.
+ARES Desktop is the native macOS owner of the local ARES application lifecycle.
+It presents native product surfaces, starts the local controller, manages the
+menu bar and global shortcut, and exposes effective device state to the shared
+Web UI.
 
-## Current Surface
+Read [`AGENTS.md`](AGENTS.md) and
+[`../../docs/features/system-settings.md`](../../docs/features/system-settings.md)
+before changing this boundary.
 
-- SwiftUI macOS app launched with `swift run ARES`.
-- Main window wraps the Web UI at the configured host and port.
-- Menu bar item opens ARES, starts/stops/restarts the Web UI server, opens
-  settings, and quits the app.
-- Settings expose:
-  - Web UI host, port, auto-launch, and reload/dev mode.
-  - Server health and recent logs.
-  - Active backend selector for live adapters (Hermes, JROS, CLI/cloud).
-  - Hermes and JROS gateway URL/key fields.
-  - LAN and Tailscale URLs with QR code for phone/tablet access.
-  - Browser microphone constraints for remote HTTP access.
-  - Pending approvals and recent audit log entries.
+## Current contract
 
-## Responsibility Boundary
+- ARES.app creates and supervises the controller on the configured ARES port.
+- It refuses to adopt an unrelated or orphaned server already using that port.
+- Each launch gives the app and controller a matching runtime instance ID.
+- The native app writes a short-lived heartbeat and effective device settings.
+- The controller stores desired settings and authenticated native commands.
+- Safari/Web clients disable native controls when the app is unavailable.
+- Closing the last window stops the controller when background operation is
+  disabled; reopening ARES starts it again.
 
-ARES Desktop does not replace Hermes, JROS, or the Web UI. It is a native
-presentation and control layer over those systems:
+Jaeger AI, Hermes, Codex, Claude, and other workers remain external tools behind
+ARES adapters. They do not own the ARES app, settings, identity, or controller
+lifecycle. New code and UI use **Jaeger AI** and canonical `jaeger_local` names;
+retired JROS names are accepted only at explicit migration boundaries.
 
-- Hermes owns Hermes runtime state.
-- JROS owns JROS runtime, embodiment, and canonical character/persona state.
-- ARES projects active runtime identity and owns user-facing presentation,
-  permissions, settings, server control, and continuity surfaces.
-
-## Build And Run
+## Build, test, and run
 
 ```bash
 cd /path/to/ARES
-swift build
-swift run ARES
+swift test
+./apps/macos/build-app.sh
+open ./apps/macos/ARES.app
 ```
 
-The app starts the Web UI automatically when `Start WebUI Server on App Launch`
-is enabled. Server launch exports the native Hermes/JROS gateway settings into
-the Web UI process environment.
-
-## Archived Notes
-
-Older experimental desktop plans that do not describe the current app have been
-moved out of the repo to:
-
-```text
-<path-to-local-archive>/ARES-misaligned-archive/
-```
+The development bundle discovers `services/controller/` from the monorepo and
+uses its canonical `.venv`. The production packaging story must eventually
+bundle or install that runtime explicitly; it must not silently attach to a
+separately launched controller.
