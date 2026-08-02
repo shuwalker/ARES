@@ -75,6 +75,89 @@ final class WebUIServerManagerTests: XCTestCase {
         XCTAssertEqual(environment["UNCHANGED"], "yes")
     }
 
+    func testDevelopmentLauncherSelectsSiblingJaegerAIAndActiveCompanion() throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ares-jaeger-dependency-\(UUID().uuidString)")
+        let controller = workspace.appendingPathComponent("ARES/services/controller")
+        let jaeger = workspace.appendingPathComponent("JaegerAI")
+        try FileManager.default.createDirectory(
+            at: controller,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: jaeger.appendingPathComponent("jaeger_ai"),
+            withIntermediateDirectories: true
+        )
+        let launcher = jaeger.appendingPathComponent("jaeger")
+        try Data("#!/bin/sh\n".utf8).write(to: launcher)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: launcher.path)
+        try FileManager.default.createDirectory(
+            at: jaeger.appendingPathComponent(".jaeger_os/instances/jarvis"),
+            withIntermediateDirectories: true
+        )
+        try Data("jarvis\n".utf8).write(
+            to: jaeger.appendingPathComponent(".jaeger_os/active_instance")
+        )
+        defer { try? FileManager.default.removeItem(at: workspace) }
+
+        let environment = WebUIServerManager.applyingJaegerDependencyEnvironment(
+            to: ["ARES_JROS_INSTANCE": "legacy"],
+            controllerDirectory: controller,
+            homeDirectory: workspace.appendingPathComponent("home")
+        )
+
+        XCTAssertEqual(environment["ARES_JAEGER_HOME"], jaeger.path)
+        XCTAssertEqual(environment["JAEGER_HOME"], jaeger.path)
+        XCTAssertEqual(environment["ARES_JAEGER_SOURCE_DIR"], jaeger.path)
+        XCTAssertEqual(environment["ARES_JAEGER_INSTANCE"], "jarvis")
+        XCTAssertNil(environment["ARES_JROS_INSTANCE"])
+    }
+
+    func testDependencyValidationRejectsLegacyJROSShape() throws {
+        let legacy = FileManager.default.temporaryDirectory
+            .appendingPathComponent("legacy-jros-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: legacy.appendingPathComponent("jaeger_os"),
+            withIntermediateDirectories: true
+        )
+        let launcher = legacy.appendingPathComponent("jaeger")
+        try Data("#!/bin/sh\n".utf8).write(to: launcher)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: launcher.path)
+        defer { try? FileManager.default.removeItem(at: legacy) }
+
+        XCTAssertFalse(WebUIServerManager.isJaegerAIProductRoot(legacy))
+    }
+
+    func testExplicitInvalidDependencyFailsClosed() throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ares-jaeger-explicit-\(UUID().uuidString)")
+        let controller = workspace.appendingPathComponent("ARES/services/controller")
+        let validSibling = workspace.appendingPathComponent("JaegerAI")
+        let stale = workspace.appendingPathComponent("old-jros")
+        try FileManager.default.createDirectory(at: controller, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: validSibling.appendingPathComponent("jaeger_ai"),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(at: stale, withIntermediateDirectories: true)
+        FileManager.default.createFile(
+            atPath: validSibling.appendingPathComponent("jaeger").path,
+            contents: Data("#!/bin/sh\n".utf8),
+            attributes: [.posixPermissions: 0o755]
+        )
+        defer { try? FileManager.default.removeItem(at: workspace) }
+
+        let environment = WebUIServerManager.applyingJaegerDependencyEnvironment(
+            to: ["ARES_JAEGER_HOME": stale.path],
+            controllerDirectory: controller,
+            homeDirectory: workspace.appendingPathComponent("home")
+        )
+
+        XCTAssertNil(environment["ARES_JAEGER_HOME"])
+        XCTAssertNil(environment["JAEGER_HOME"])
+        XCTAssertNil(environment["ARES_JAEGER_SOURCE_DIR"])
+    }
+
     func testLocalGatewayURLDoesNotForceRemoteHealthProbing() {
         // A loopback Hermes URL must not export ARES_API_URL — that flips the
         // controller's agent health into remote-HTTP probing and skips the

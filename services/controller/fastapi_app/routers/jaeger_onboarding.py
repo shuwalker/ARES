@@ -8,7 +8,6 @@ Control Center report the same truth as chat routing.
 from __future__ import annotations
 
 import logging
-import shutil
 import time
 from pathlib import Path
 from typing import Any, Dict, List
@@ -75,57 +74,23 @@ class OnboardingCompleteRequest(BaseModel):
 
 
 def _character_search_roots() -> list[Path]:
-    """Portable character roots — env overrides first, no maintainer paths required."""
-    roots: list[Path] = []
-    for env_name in ("ARES_CHARACTER_DIR", "ARES_PERSONA_DIR", "ARES_JAEGER_HOME", "JAEGER_HOME"):
-        raw = __import__("os").environ.get(env_name, "").strip()
-        if not raw:
-            continue
-        base = Path(raw).expanduser()
-        roots.extend(
-            [
-                base / "personality" / "characters",
-                base / "jaeger_os" / "personality" / "characters",
-                base / "jaeger_ai" / "personality" / "characters",
-            ]
-        )
-    # Installed peer defaults (portable; not maintainer-specific).
-    home = Path.home()
-    roots.extend(
-        [
-            home / "jaeger" / "jaeger_os" / "personality" / "characters",
-            home / ".jaeger" / "personality" / "characters",
-        ]
-    )
-    return roots
+    """The character library owned by the selected JaegerAI dependency."""
+    from api.providers.jaeger.paths import character_dir
+
+    return [character_dir()]
 
 
 def _instance_search_roots() -> list[Path]:
-    roots: list[Path] = []
-    for env_name in ("ARES_JAEGER_HOME", "JAEGER_HOME", "JAEGER_INSTANCE_DIR"):
-        raw = __import__("os").environ.get(env_name, "").strip()
-        if not raw:
-            continue
-        base = Path(raw).expanduser()
-        if env_name == "JAEGER_INSTANCE_DIR":
-            roots.append(base.parent if base.name else base)
-        else:
-            roots.extend(
-                [
-                    base / ".jaeger_os" / "instances",
-                    base / "instances",
-                    base / "jaeger_os" / "instances",
-                ]
-            )
-    home = Path.home()
-    roots.extend(
-        [
-            home / "jaeger" / ".jaeger_os" / "instances",
-            home / "jaeger" / "instances",
-            home / ".jaeger" / "instances",
-        ]
-    )
-    return roots
+    """Instance roots belonging only to the selected JaegerAI dependency."""
+    import os
+
+    from api.providers.jaeger.paths import jaeger_home
+
+    explicit_instance = os.environ.get("JAEGER_INSTANCE_DIR", "").strip()
+    if explicit_instance:
+        path = Path(explicit_instance).expanduser().resolve()
+        return [path.parent]
+    return [jaeger_home() / ".jaeger_os" / "instances"]
 
 
 def _discover_instances() -> list[dict[str, Any]]:
@@ -156,7 +121,7 @@ def _discover_instances() -> list[dict[str, Any]]:
 
                 identity = yaml.safe_load(identity_path.read_text(encoding="utf-8")) or {}
                 if isinstance(identity, dict):
-                    display_name = str(identity.get("display_name") or display_name)
+                    display_name = str(identity.get("name") or display_name)
                     character = identity.get("personality") or identity.get("role")
                 config_path = instance_dir / "config.yaml"
                 if config_path.exists():
@@ -164,7 +129,7 @@ def _discover_instances() -> list[dict[str, Any]]:
                     if isinstance(config, dict):
                         model_cfg = config.get("model") or {}
                         if isinstance(model_cfg, dict):
-                            model = model_cfg.get("awake") or model_cfg.get("default")
+                            model = model_cfg.get("model_path")
             except Exception as exc:
                 logger.debug("Failed to read Jaeger instance %s: %s", instance_dir, exc)
             instances.append(
@@ -425,18 +390,12 @@ async def get_jaeger_status(
     filesystem discovery and is separate from transport readiness.
     """
     checked_at = time.time()
-    jaeger_cli = shutil.which("jaeger")
+    from api.providers.jaeger.paths import is_jaeger_ai_root, jaeger_home, jaeger_launcher
 
-    # Python package presence (install signal only — not runtime readiness).
-    jaeger_ai_available = False
-    jaeger_ai_path = None
-    try:
-        import jaeger_ai
-
-        jaeger_ai_available = True
-        jaeger_ai_path = str(Path(jaeger_ai.__file__).parent.parent)
-    except ImportError:
-        pass
+    selected_root = jaeger_home()
+    jaeger_cli = str(jaeger_launcher()) if jaeger_launcher().is_file() else None
+    jaeger_ai_available = is_jaeger_ai_root(selected_root)
+    jaeger_ai_path = str(selected_root) if jaeger_ai_available else None
 
     provider_state = "error"
     provider_available = False
@@ -460,9 +419,9 @@ async def get_jaeger_status(
 
     companion_ready = False
     try:
-        from api.providers.jaeger.companion import companion_available
+        from api.providers.jaeger.companion import companion_exists
 
-        companion_ready = bool(companion_available())
+        companion_ready = bool(companion_exists())
     except Exception:
         companion_ready = False
 
@@ -481,7 +440,9 @@ async def get_jaeger_status(
     # Active model only when the live health probe reported one — never from
     # recommendation fallbacks.
     active_model = provider_details.get("model")
-    active_instance = provider_details.get("instance")
+    from api.providers.jaeger.paths import jros_instance_name
+
+    active_instance = provider_details.get("instance") or jros_instance_name()
     transport_mode = provider_details.get("mode")  # gateway | bridge
     gateway_url = provider_details.get("gateway_url")
     root = provider_details.get("root")

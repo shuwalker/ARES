@@ -88,6 +88,11 @@ public final class WebUIServerManager: ObservableObject {
             jrosURL: config.jrosURL,
             jrosAPIKey: config.jrosAPIKey
         )
+        env = Self.applyingJaegerDependencyEnvironment(
+            to: env,
+            controllerDirectory: dir,
+            homeDirectory: FileManager.default.homeDirectoryForCurrentUser
+        )
         env["ARES_ROLE"] = config.aresRole
         env["ARES_DEVICE_ID"] = config.aresDeviceID
         env["ARES_AI_ID"] = config.aresAIID
@@ -189,6 +194,99 @@ public final class WebUIServerManager: ObservableObject {
         environment["ARES_RUNTIME_INSTANCE_ID"] = instanceID
         environment["ARES_NATIVE_STATE_DIR"] = stateDirectory.path
         return environment
+    }
+
+    nonisolated static func applyingJaegerDependencyEnvironment(
+        to base: [String: String],
+        controllerDirectory: URL,
+        homeDirectory: URL,
+        fileManager: FileManager = .default
+    ) -> [String: String] {
+        var environment = base
+        // Retired JROS variables are migration inputs inside the controller,
+        // never values emitted by the current Mac launcher.
+        for key in [
+            "ARES_JROS_DIR", "ARES_JROS_CONFIG_PATH", "ARES_JROS_INSTANCE",
+            "JROS_HOME", "JROS_INSTANCE_NAME",
+        ] {
+            environment.removeValue(forKey: key)
+        }
+
+        let aresRoot = controllerDirectory
+            .deletingLastPathComponent() // services
+            .deletingLastPathComponent() // ARES repository
+        let siblingCheckout = aresRoot
+            .deletingLastPathComponent()
+            .appendingPathComponent("JaegerAI", isDirectory: true)
+        let standardInstall = homeDirectory.appendingPathComponent("jaeger", isDirectory: true)
+
+        let explicitSelection = ["ARES_JAEGER_HOME", "JAEGER_HOME", "ARES_JAEGER_SOURCE_DIR"]
+            .compactMap { key -> (key: String, url: URL)? in
+                guard let raw = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !raw.isEmpty
+                else { return nil }
+                return (key, URL(fileURLWithPath: raw, isDirectory: true))
+            }
+            .first
+        let selected: URL?
+        let selectedIsSource: Bool
+        if let explicitSelection {
+            // Explicit dependency selection fails closed. A stale JROS path
+            // must never be hidden by switching to another checkout.
+            selected = isJaegerAIProductRoot(explicitSelection.url, fileManager: fileManager)
+                ? explicitSelection.url
+                : nil
+            selectedIsSource = explicitSelection.key == "ARES_JAEGER_SOURCE_DIR"
+        } else {
+            // Repository builds prefer the adjacent development checkout.
+            // Packaged installs fall through to the conventional top-level path.
+            selected = [siblingCheckout, standardInstall].first(where: {
+                isJaegerAIProductRoot($0, fileManager: fileManager)
+            })
+            selectedIsSource = selected?.standardizedFileURL == siblingCheckout.standardizedFileURL
+        }
+
+        guard let selected else {
+            environment.removeValue(forKey: "ARES_JAEGER_HOME")
+            environment.removeValue(forKey: "JAEGER_HOME")
+            environment.removeValue(forKey: "ARES_JAEGER_SOURCE_DIR")
+            environment.removeValue(forKey: "ARES_JAEGER_INSTANCE")
+            return environment
+        }
+
+        environment["ARES_JAEGER_HOME"] = selected.path
+        environment["JAEGER_HOME"] = selected.path
+        if selectedIsSource {
+            environment["ARES_JAEGER_SOURCE_DIR"] = selected.path
+        } else {
+            environment.removeValue(forKey: "ARES_JAEGER_SOURCE_DIR")
+        }
+
+        let activeFile = selected.appendingPathComponent(".jaeger_os/active_instance")
+        if let active = try? String(contentsOf: activeFile, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !active.isEmpty,
+           fileManager.fileExists(
+               atPath: selected.appendingPathComponent(".jaeger_os/instances/\(active)").path
+           ) {
+            environment["ARES_JAEGER_INSTANCE"] = active
+        } else {
+            environment.removeValue(forKey: "ARES_JAEGER_INSTANCE")
+        }
+        return environment
+    }
+
+    nonisolated static func isJaegerAIProductRoot(
+        _ root: URL,
+        fileManager: FileManager = .default
+    ) -> Bool {
+        var isDirectory: ObjCBool = false
+        let package = root.appendingPathComponent("jaeger_ai", isDirectory: true)
+        guard fileManager.fileExists(atPath: package.path, isDirectory: &isDirectory),
+              isDirectory.boolValue
+        else { return false }
+        let launcher = root.appendingPathComponent("jaeger")
+        return fileManager.isExecutableFile(atPath: launcher.path)
     }
 
     /// True when the configured Hermes gateway URL points at this machine —

@@ -1,16 +1,16 @@
-"""jros_client — the single-file Python client for a JROS agent.
+"""Bridge client for a JaegerAI Companion.
 
-Copy this ONE file into your app. Stdlib only, no dependencies, no JROS
-package in your venv: it drives an EXISTING JROS install by spawning its
+Stdlib only: no JaegerAI package is imported into ARES. The client drives an
+existing JaegerAI install by spawning its
 ``jaeger bridge`` and speaking the v1 NDJSON client protocol over stdio.
 
-    from jros_client import JrosClient
+    from api.providers.jaeger.bridge_client import JrosClient
 
-    with JrosClient() as jros:                 # uses env/configured JROS home
-        reply = jros.turn("hello", session="myapp")
+    with JrosClient() as companion:
+        reply = companion.turn("hello", session="myapp")
         print(reply["text"])
 
-Pick an agent:       JrosClient(instance="lilith")
+Pick an agent:       JrosClient(instance="jarvis")
 Non-default install: JrosClient(jaeger_home="/opt/jaeger")
 Full control:        JrosClient(command=["/path/to/jaeger", "bridge"])
 
@@ -125,6 +125,8 @@ class JrosClient:
         self._stderr_lines: list[str] = []
         self._stderr_thread: threading.Thread | None = None
         self.ready: dict[str, Any] | None = None
+        self._io_lock = threading.RLock()
+        self._request_counter = 0
 
     # ── lifecycle ─────────────────────────────────────────────────
     def start(self) -> dict[str, Any]:
@@ -206,27 +208,57 @@ class JrosClient:
         ``on_event(frame)`` fires for each tool/state frame; ``on_request``
         is called for a mid-turn prompt (approval/clarify/secret) and must
         return the answer (default "deny")."""
-        if self._proc is None:
-            raise JrosError("not started")
-        self._write(send_op(text, session))
-        for line in self._proc.stdout:        # type: ignore[union-attr]
-            frame = _parse(line)
-            if frame is None:
-                continue
-            kind = frame.get("type")
-            if kind == "reply":
-                return {"text": frame.get("text", ""),
-                        "error": frame.get("error")}
-            if kind == "request":
-                answer = on_request(frame) if on_request else "deny"
-                self._write(respond_op(
-                    str(frame.get("id", "")), answer or "deny"))
-            elif kind in ("tool", "state"):
-                if on_event is not None:
-                    on_event(frame)
-            elif kind == "fatal":
-                raise JrosError(str(frame.get("error", "bridge failed")))
-        raise JrosError("bridge exited mid-turn")
+        with self._io_lock:
+            if self._proc is None:
+                raise JrosError("not started")
+            self._write(send_op(text, session))
+            for line in self._proc.stdout:        # type: ignore[union-attr]
+                frame = _parse(line)
+                if frame is None:
+                    continue
+                kind = frame.get("type")
+                if kind == "reply":
+                    return {"text": frame.get("text", ""),
+                            "error": frame.get("error")}
+                if kind == "request":
+                    answer = on_request(frame) if on_request else "deny"
+                    self._write(respond_op(
+                        str(frame.get("id", "")), answer or "deny"))
+                elif kind in ("tool", "state"):
+                    if on_event is not None:
+                        on_event(frame)
+                elif kind == "fatal":
+                    raise JrosError(str(frame.get("error", "bridge failed")))
+            raise JrosError("bridge exited mid-turn")
+
+    def query(self, what: str, args: dict[str, Any] | None = None) -> Any:
+        """Read Jaeger-owned state through the versioned bridge contract."""
+        return self._request({"op": "query", "what": what, "args": args or {}})
+
+    def command(self, cmd: str, args: dict[str, Any] | None = None) -> Any:
+        """Ask Jaeger to mutate its own state through a validated command."""
+        return self._request({"op": "command", "cmd": cmd, "args": args or {}})
+
+    def _request(self, frame: dict[str, Any]) -> Any:
+        with self._io_lock:
+            if self._proc is None:
+                raise JrosError("not started")
+            self._request_counter += 1
+            request_id = f"ares-{self._request_counter}"
+            payload = {**frame, "id": request_id}
+            self._write(payload)
+            for line in self._proc.stdout:        # type: ignore[union-attr]
+                reply = _parse(line)
+                if reply is None:
+                    continue
+                kind = reply.get("type")
+                if kind == "result" and str(reply.get("id") or "") == request_id:
+                    if not bool(reply.get("ok", True)):
+                        raise JrosError(str(reply.get("error") or "Jaeger command failed"))
+                    return reply.get("data")
+                if kind == "fatal":
+                    raise JrosError(str(reply.get("error") or "bridge failed"))
+            raise JrosError("bridge exited before returning a result")
 
     # ── internals ─────────────────────────────────────────────────
     def _write(self, frame: dict[str, Any]) -> None:

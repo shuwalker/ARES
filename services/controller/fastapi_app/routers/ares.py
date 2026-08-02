@@ -125,7 +125,8 @@ def current_persona(_identity: Annotated[RequestIdentity, Depends(require_identi
     return {"persona_id": str(get_config().get("ares_persona") or "").strip()}
 
 
-def _save_config_values(values: dict[str, Any]) -> None:
+def save_config_values(values: dict[str, Any]) -> None:
+    """Persist controller-level runtime choices and reload active config."""
     from api.config import (
         _get_config_path,
         _load_yaml_config_file,
@@ -149,7 +150,7 @@ def set_persona(
     persona_id = str(payload.get("persona_id") or "").strip()
     try:
         with profile_scope(identity.profile):
-            _save_config_values({"ares_persona": persona_id})
+            save_config_values({"ares_persona": persona_id})
     except Exception as exc:
         raise CoreApiError(400, f"Failed to save persona: {exc}") from exc
     return {"ok": True, "persona_id": persona_id}
@@ -214,7 +215,7 @@ def set_backend(
                     "session_id": session_id,
                     "capabilities": [],
                 }
-            _save_config_values({"ares_backend": ""})
+            save_config_values({"ares_backend": ""})
         return {"ok": True, "backend": "", "scope": "default", "capabilities": []}
     try:
         backend_name = registry.execution_adapter(requested).adapter_id
@@ -242,7 +243,7 @@ def set_backend(
                 "session_id": session_id,
                 "capabilities": capabilities_for_backend(backend_name),
             }
-        _save_config_values({"ares_backend": backend_name})
+        save_config_values({"ares_backend": backend_name})
     from api.provider_registry import (
         ProviderRegistryCorrupt,
         load_provider_registry,
@@ -512,7 +513,7 @@ def configure_device(
 
     with profile_scope(identity.profile):
         updates = normalize_config_update(payload, get_config())
-        _save_config_values(updates)
+        save_config_values(updates)
         config = get_config()
         registration = register_device(config=config)
     return {"ok": True, "updates": updates, "status": status(config), "registration": registration}

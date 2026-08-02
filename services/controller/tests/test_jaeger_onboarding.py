@@ -66,7 +66,7 @@ def test_jaeger_status_ready_from_provider_contract():
     with (
         patch("api.providers.jaeger.status.check_status", return_value=fake),
         patch("api.providers.jaeger.status.reset_cache"),
-        patch("api.providers.jaeger.companion.companion_available", return_value=True),
+        patch("api.providers.jaeger.companion.companion_exists", return_value=True),
     ):
         response = client.get("/api/jaeger-onboarding/status?refresh=true")
     assert response.status_code == 200

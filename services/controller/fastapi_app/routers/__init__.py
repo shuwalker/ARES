@@ -54,6 +54,7 @@ from .rankings import router as rankings_router
 from .jaeger_onboarding import router as jaeger_onboarding_router
 from .organizer import router as organizer_router
 from .native_system import router as native_system_router
+from .companion import router as companion_router
 
 def install_core_routers(application: FastAPI) -> None:
     application.include_router(adapters_router)
@@ -109,6 +110,7 @@ def install_core_routers(application: FastAPI) -> None:
     application.include_router(jaeger_onboarding_router)
     application.include_router(organizer_router)
     application.include_router(native_system_router)
+    application.include_router(companion_router)
 
 
 __all__ = ["install_core_routers"]

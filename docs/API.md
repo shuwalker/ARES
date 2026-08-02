@@ -297,7 +297,7 @@ out-of-range values are rejected or ignored according to controller validation;
 clients must read the response as the saved result rather than assuming every
 submitted value was accepted.
 
-SI personalization keys:
+Legacy SI preference keys retained for migration compatibility:
 
 | Key | Accepted value |
 | --- | --- |
@@ -308,11 +308,34 @@ SI personalization keys:
 | `si_cal_initiative` | `reactive`, `balanced`, `proactive` |
 | `si_cal_notes` | String, trimmed, maximum 2,000 characters, no null byte |
 
-These are preference keys, not permission or autonomy controls. Their behavior
-contract and current implementation status are defined in
-[`features/si-personalization.md`](features/si-personalization.md).
+These keys are not shown as active SI controls. New Companion identity and
+character clients use `/api/companion`.
 
-## 6. Native System API (`/api/system/native`)
+## 6. Companion API (`/api/companion`)
+
+This normalized contract keeps the React and Mac surfaces independent of
+JaegerAI's internal files and schemas.
+
+### `GET /api/companion`
+
+Returns contract version `1`, the selected dependency/transport, live agent
+identity, active character, available characters, and ARES relationship sync
+state. A local request may start the selected JaegerAI bridge.
+
+### `PATCH /api/companion`
+
+Accepts a strict partial object:
+
+| Key | Type | Owner |
+| --- | --- | --- |
+| `name` | nonblank string, max 64 | JaegerAI identity + matching ARES name |
+| `character_id` | nonblank string, max 128 | JaegerAI active/default character |
+| `owner_name` | string, max 120 | ARES relationship |
+
+JaegerAI mutations go through bridge commands and are read back before the API
+responds. Unknown fields and invalid values are rejected.
+
+## 7. Native System API (`/api/system/native`)
 
 This device-global contract separates requested preferences from state observed
 by the native ARES app. It does not use profile settings or browser storage.

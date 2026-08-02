@@ -22,6 +22,10 @@ import {
   parseNativeSystemStatus,
   type NativeSystemSettingsPatch,
 } from "@/shared/system-settings-contract";
+import {
+  parseCompanionStatus,
+  type CompanionUpdate,
+} from "@/shared/companion-contract";
 
 // ── Session search result ─────────────────────────────────────────────
 export interface SessionSearchResult {
@@ -610,6 +614,17 @@ export const aresApi = {
       "/api/system/native/actions",
       { method: "POST", body: JSON.stringify({ action }) },
     );
+  },
+
+  async companionGet() {
+    return parseCompanionStatus(await apiFetch("/api/companion"));
+  },
+
+  async companionPatch(patch: CompanionUpdate) {
+    return parseCompanionStatus(await apiFetch("/api/companion", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }));
   },
 
   async restartGateway() {

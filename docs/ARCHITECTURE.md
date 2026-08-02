@@ -152,6 +152,20 @@ instead of rewriting or replaying the worker's private state. A warm-worker
 daemon may be introduced later if measured startup latency justifies it, but
 the process and ownership boundary remains.
 
+### JaegerAI is an adapter-backed product dependency
+
+JaegerAI is the primary local Companion runtime when the user elects
+`jaeger_local`, but it remains a separate application and repository. ARES
+discovers a validated JaegerAI product root and communicates through bridge
+protocol v1 (or an explicitly configured gateway). It does not import JaegerAI
+into the controller environment or reproduce JaegerAI's schemas.
+
+ARES may project its user-facing Companion name into JaegerAI by calling
+JaegerAI's validated `save_identity` command. Character changes likewise use
+`select_character` and `make_default`. This is not a direct external-store
+write: JaegerAI validates and persists its own state, and ARES reads the result
+back through the adapter. The normalized client contract is `/api/companion`.
+
 ### ARES and workers own separate stores
 
 ARES reads and writes its own journal, tasks, artifacts, approvals, and profile
@@ -206,6 +220,9 @@ architecture decision.
 - Every completed turn retains worker and model provenance when available.
 - External stores are opened read-only and never acquire ARES-created journals
   or lock files.
+- Supported worker commands may mutate worker-owned configuration, but only
+  through that worker's versioned adapter—not through direct file/database
+  writes.
 
 ## 7. External Agent Source Boundary
 

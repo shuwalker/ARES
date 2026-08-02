@@ -1,135 +1,117 @@
-# SI Personalization
+# SI Companion Settings
 
 | Attribute | Value |
 | --- | --- |
-| **Status** | Active / partially implemented |
-| **Owner** | Settings UI and controller prompt assembly |
+| **Status** | Active |
+| **Owner** | ARES Settings and JaegerAI adapter |
 | **Last verified** | 2026-08-01 |
-| **Source of truth** | Linked source files and acceptance tests below |
+| **Source of truth** | `/api/companion`, its adapter, and contract tests |
 
 ## User purpose
 
-The SI page answers one question: **How should my SI understand, communicate,
-and work with me?** It configures the continuous relationship the user has with
-ARES, independent of whichever worker performs a turn.
+The SI page configures the one assistant the user talks to. ARES owns the
+relationship and product experience. JaegerAI supplies the selected local agent,
+character, voice, and model runtime.
 
-“SI” is the compact Settings label. “Companion” may describe the continuous
-experience in product prose. Neither term names a worker. ARES is the
-application hosting that experience.
+The page is intentionally small:
 
-## Ownership boundary
+1. What should the Companion call the user?
+2. What is the Companion's name?
+3. Which real JaegerAI character should it use?
+4. Is the JaegerAI dependency connected, and which agent/model is selected?
 
-| SI Settings owns | Control Center owns |
+It is a settings page, not an explanation of SI architecture or a runtime
+diagnostic console.
+
+## Product and repository boundary
+
+ARES and JaegerAI are separate applications and independently versioned
+repositories. ARES never edits JaegerAI YAML, databases, or character files.
+It reads and changes Companion state through JaegerAI bridge protocol v1.
+
+| ARES owns | JaegerAI owns |
 | --- | --- |
-| What the SI calls the user | Active agents, workers, and delegated tasks |
-| SI display name | AI tools, providers, and connection health |
-| Voice preference | Memory indexing and privacy policy |
-| Personality base | Permissions and approvals |
-| Communication calibration | Autonomy and device/network reachability |
-| Additional personal guidance | Worker activity, setup, and diagnostics |
+| User-facing relationship and ARES display name | Agent identity file |
+| User name | Active and default character |
+| ARES sessions and task continuity | Character profile, traits, and voice |
+| Backend election | Model/runtime configuration |
+| Permissions and product policy | Runtime execution and native persistence |
 
-Calibration changes communication behavior. It never grants a permission,
-changes data-retention policy, or silently selects a worker.
+Changing the Companion name calls JaegerAI's `save_identity` command and then
+stores the matching ARES display name. Changing Character calls both
+`select_character` (effective now) and `make_default` (effective after restart).
+ARES reads the result back instead of assuming the write succeeded.
 
-## Intended page layout
+## Dependency discovery
 
-1. **Your SI** — a short explanation that identity remains stable while workers
-   can change. Detailed SI architecture belongs in Product documentation or an
-   optional disclosure, not a large lecture card.
-2. **Identity** — user display name, SI name, voice, and **Personality base**.
-   Preserve the stored `local_profile_character` key; only the misleading
-   “Character” label changes.
-3. **Behavior** — detail level, tone, challenge style, initiative, and personal
-   guidance. Explain each control in ordinary language.
-4. **Active worker** — one compact status row and a link to Control Center.
-   Worker setup and diagnostics do not render here. Local ARES application and
-   service controls belong in System Settings.
-5. **Advanced identity** — when implemented, link to Hatchery for deeper
-   persona construction rather than expanding basic Settings indefinitely.
+The Mac-owned controller receives canonical environment variables:
 
-## Persisted contract
+- `ARES_JAEGER_HOME`: selected JaegerAI product root.
+- `JAEGER_HOME`: the same root for JaegerAI's launcher.
+- `ARES_JAEGER_SOURCE_DIR`: optional development-checkout root.
+- `ARES_JAEGER_INSTANCE`: selected instance ID.
 
-`POST /api/settings` accepts partial updates. These keys remain stable:
+Resolution order is explicit configuration, a valid `~/jaeger` product install,
+then a valid sibling `JaegerAI` development checkout. A valid root must contain
+both the `jaeger_ai` package and executable `jaeger` launcher. A legacy JROS
+tree is rejected. Explicit invalid configuration fails closed instead of
+silently selecting another checkout.
 
-| Key | Values | Default |
-| --- | --- | --- |
-| `local_profile_character` | `grounded`, `warm`, `direct`, `curious` | `grounded` |
-| `si_cal_verbosity` | `concise`, `balanced`, `explanatory` | `balanced` |
-| `si_cal_tone` | `direct`, `balanced`, `conversational` | `balanced` |
-| `si_cal_support` | `supportive`, `balanced`, `challenging` | `balanced` |
-| `si_cal_initiative` | `reactive`, `balanced`, `proactive` | `balanced` |
-| `si_cal_notes` | trimmed string, maximum 2,000 characters | empty |
-
-## Required behavior mapping
-
-The controller must render a bounded, clearly delimited calibration block into
-the ephemeral system instructions for every applicable worker turn.
-
-| Value | Required instruction meaning |
-| --- | --- |
-| `concise` | Lead with the result and keep explanation brief unless requested. |
-| `balanced` verbosity | Give enough context to act without unnecessary detail. |
-| `explanatory` | Explain unfamiliar concepts and important reasoning in more depth. |
-| `direct` tone | Use plain, direct language with minimal conversational padding. |
-| `balanced` tone | Be clear and natural without forcing formality or informality. |
-| `conversational` | Use a warmer, natural conversational style while remaining precise. |
-| `supportive` | Be constructive and encouraging without hiding risks. |
-| `balanced` support | Support good ideas and challenge material weaknesses. |
-| `challenging` | Stress-test assumptions, evidence, and counterarguments respectfully. |
-| `reactive` | Answer the request without adding unsolicited plans or next actions. |
-| `balanced` initiative | Mention an obvious useful next step when it materially helps. |
-| `proactive` | Surface relevant risks, opportunities, and next actions without acting beyond permission. |
-
-Personal guidance is appended after the structured mapping. It is user-authored
-preference text, not authorization: it cannot override system safety,
-permissions, approvals, or worker/tool constraints.
-
-## Data flow
+## API flow
 
 ```text
-SI Settings controls
-  -> POST /api/settings
-  -> validated profile settings
-  -> calibration renderer
-  -> ephemeral ARES system instructions
-  -> selected worker adapter
-  -> response and execution events
+Settings → SI
+  → GET /api/companion
+  → ARES Companion adapter
+  → jaeger bridge <instance> (protocol v1 queries)
+
+Save Companion
+  → PATCH /api/companion
+  → validated JaegerAI commands
+  → read back live JaegerAI state
+  → persist matching ARES name
+  → explicitly elect jaeger_local as the default backend
 ```
 
-## Implementation status
+`GET /api/companion` may start a local bridge. The bridge remains cached by the
+controller for low-latency chat and is closed when the controller exits or the
+runtime is reset.
 
-- Implemented: typed Web controls, persistence keys, validation, reload, and
-  ownership tests.
-- Implemented: Jaeger status/setup component and Control Center destinations.
-- Missing: calibration renderer and injection into prompt assembly.
-- Needs refinement: SI lecture copy, “Character” label, and detailed Jaeger card
-  placement.
+## Settings vs Control Center
 
-Do not remove or rename the persisted keys while fixing the missing behavior.
+| Settings → SI | Control Center / Hatchery |
+| --- | --- |
+| Companion and user names | Provider health and connection details |
+| Real JaegerAI character picker | Start/restart and failure recovery |
+| Compact active agent/model status | Model install and hardware tuning |
+| Save and synchronize identity | Memory, privacy, permissions, autonomy |
+
+Old `local_profile_character` and `si_cal_*` keys remain accepted as migration
+data, but are no longer presented as working SI controls. They must not be
+reintroduced until an adapter-backed behavior contract proves they affect the
+selected runtime safely.
 
 ## Source anchors
 
 | Concern | Source |
 | --- | --- |
 | SI page | `apps/web/src/features/settings/SISection.tsx` |
-| Calibration types and keys | `apps/web/src/features/settings/si-calibration.ts` |
-| Settings controller | `apps/web/src/features/settings/useSettingsController.ts` |
-| Settings validation | `services/controller/api/config.py` |
-| Settings route | `services/controller/fastapi_app/routers/settings.py` |
-| Prompt assembly | `services/controller/api/streaming.py` |
-| Frontend ownership tests | `apps/web/src/features/settings/settings-ownership.test.ts` |
-| Controller persistence tests | `services/controller/tests/test_si_calibration_settings.py` |
+| Web hook | `apps/web/src/features/settings/useCompanionSettings.ts` |
+| Web contract | `apps/web/src/shared/companion-contract.ts` |
+| API route | `services/controller/fastapi_app/routers/companion.py` |
+| JaegerAI adapter | `integrations/providers/jaeger/companion_control.py` |
+| Bridge client | `integrations/providers/jaeger/bridge_client.py` |
+| Dependency resolver | `integrations/providers/jaeger/paths.py` |
+| Controller tests | `services/controller/tests/test_companion_integration.py` |
 
 ## Acceptance criteria
 
-- The page can be understood without knowing what an LLM, gateway, provenance,
-  or context assembly is.
-- “Personality base” replaces the user-facing “Character” label without a
-  storage-key migration.
-- Detailed Jaeger infrastructure appears only in Control Center.
-- Each calibration value produces deterministic prompt text covered by tests.
-- Prompt assembly includes personal guidance once, safely delimited and capped.
-- Balanced defaults do not produce contradictory or excessive instructions.
-- Calibration cannot elevate autonomy, permissions, or network access.
-- Switching workers preserves identity and calibration.
-- Product, API, and feature docs update with any contract change.
+- The page contains one navigation system and no architecture lecture.
+- Names and Character are loaded from live JaegerAI state.
+- Saving uses JaegerAI commands; ARES never writes JaegerAI files directly.
+- Character changes are live and restart-persistent.
+- A save reads state back and visibly reports synchronization.
+- Invalid or legacy dependency roots are rejected.
+- Memory, privacy, permissions, autonomy, and detailed diagnostics do not
+  reappear in SI Settings.
+- The Mac app and browser UI consume the same controller and contract.

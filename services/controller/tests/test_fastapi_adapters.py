@@ -329,7 +329,7 @@ def test_connection_model_and_mcp_routes_use_registry(tmp_path: Path, monkeypatc
     app.dependency_overrides[require_mutation_identity] = lambda: IDENTITY
     saved = {}
     monkeypatch.setattr(
-        "fastapi_app.routers.ares._save_config_values",
+        "fastapi_app.routers.ares.save_config_values",
         lambda values: saved.update(values),
     )
 

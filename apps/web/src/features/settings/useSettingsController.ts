@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { useTheme } from "@/context/ThemeContext";
@@ -11,10 +11,8 @@ import {
 import { readableError } from "@/shared/api-client";
 import { aresApi } from "@/shared/ares-api";
 import { useAres } from "@/shared/ares-context";
-import type { LocalProfile } from "@/shared/contracts";
-import { useLocalProfile } from "@/shared/local-profile";
 
-import { SETTINGS_SEARCH_CATALOG, normalizeSettingsSection } from "./constants";
+import { normalizeSettingsSection } from "./constants";
 import {
   applyAppearanceToDocument,
   asBool,
@@ -24,27 +22,20 @@ import {
   SKINS,
   WEBUI_DENSITY_KEY,
 } from "./helpers";
-import type { Density, FontSize, SearchHit, SettingValue, SettingsSectionId, ThemeChoice } from "./types";
+import type { Density, FontSize, SettingValue, SettingsSectionId, ThemeChoice } from "./types";
 
 export function useSettingsController() {
-  const { profile, saveProfile } = useLocalProfile();
   const { snapshot, currentSession, refresh, selectedSessionId } = useAres();
   const { theme, preference, setPreference } = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const sectionParam = searchParams.get("section");
   const [section, setSection] = useState<SettingsSectionId>(() => normalizeSettingsSection(sectionParam));
-  const [search, setSearch] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
-
   const [settings, setSettings] = useState<Record<string, SettingValue>>({});
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
-
-  const [draft, setDraft] = useState<LocalProfile>(profile);
-  const [profileSaved, setProfileSaved] = useState(false);
 
   const [density, setDensity] = useState<Density>(() => readDensity());
   const [island, setIsland] = useState<IslandBackdropSettings>(() => readIslandSettings());
@@ -118,16 +109,6 @@ export function useSettingsController() {
   }, [loadSettings]);
 
   useEffect(() => {
-    setDraft({
-      ...profile,
-      assistantName: asString(settings.bot_name, profile.assistantName) || profile.assistantName,
-      displayName: asString(settings.owner_name, profile.displayName) || profile.displayName,
-      contextStoreEnabled: asBool(settings.context_store_enabled, profile.contextStoreEnabled ?? false),
-      includeExternalHistory: asBool(settings.show_cli_sessions, profile.includeExternalHistory ?? false),
-    });
-  }, [profile, settings.bot_name, settings.owner_name, settings.context_store_enabled, settings.show_cli_sessions]);
-
-  useEffect(() => {
     const next = normalizeSettingsSection(sectionParam);
     if (next !== section) setSection(next);
   }, [sectionParam, section]);
@@ -180,8 +161,6 @@ export function useSettingsController() {
     (id: SettingsSectionId) => {
       setSection(id);
       setSearchParams({ section: id }, { replace: true });
-      setSearchOpen(false);
-      setSearch("");
     },
     [setSearchParams],
   );
@@ -276,38 +255,6 @@ export function useSettingsController() {
       rtl: asBool(settings.rtl),
     });
     await patchSettings({ font_size: next });
-  }
-
-  async function submitProfile(event: FormEvent) {
-    event.preventDefault();
-    setError("");
-    try {
-      // Identity-only save: autonomy, reachability, memory, and history live in Control Center.
-      await saveProfile({
-        ...draft,
-        // Preserve profile fields owned by Control Center pages.
-        autonomy: profile.autonomy,
-        reachability: profile.reachability,
-        contextStoreEnabled: profile.contextStoreEnabled,
-        includeExternalHistory: profile.includeExternalHistory,
-      });
-      await patchSettings(
-        {
-          owner_name: draft.displayName.trim(),
-          bot_name: draft.assistantName.trim() || "Companion",
-          local_profile_voice: draft.voice,
-          local_profile_setup_mode: draft.setupMode,
-          local_profile_character: draft.character,
-          local_profile_life_areas: draft.lifeAreas,
-        },
-        { quiet: true },
-      );
-      setProfileSaved(true);
-      flash("Profile saved");
-      window.setTimeout(() => setProfileSaved(false), 1800);
-    } catch (reason) {
-      setError(readableError(reason, "Profile could not be saved."));
-    }
   }
 
   async function exportActive(format: "json" | "html" | "md") {
@@ -445,25 +392,12 @@ export function useSettingsController() {
     }
   }
 
-  const searchHits = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return [] as SearchHit[];
-    return SETTINGS_SEARCH_CATALOG.filter(
-      (h) => h.label.toLowerCase().includes(q) || h.keywords.includes(q),
-    ).slice(0, 12);
-  }, [search]);
-
   return {
     snapshot,
     activeSession,
     sessionId,
     section,
     goSection,
-    search,
-    setSearch,
-    searchOpen,
-    setSearchOpen,
-    searchHits,
     settings,
     setSettings,
     loading,
@@ -471,9 +405,6 @@ export function useSettingsController() {
     error,
     setError,
     savingKeys,
-    draft,
-    setDraft,
-    profileSaved,
     density,
     setDensity,
     island,
@@ -501,7 +432,6 @@ export function useSettingsController() {
     applyThemeChoice,
     applySkin,
     applyFontSize,
-    submitProfile,
     exportActive,
     shareActive,
     stopShareActive,

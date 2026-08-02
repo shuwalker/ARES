@@ -1,30 +1,28 @@
-"""Default-off JROS gateway bridge for browser-originated ARES chat turns.
+"""JaegerAI gateway/bridge transport for browser-originated ARES chat turns.
 
-This is the JROS twin of ``api.gateway_chat`` (the Ares Gateway bridge)
+This is the JaegerAI twin of ``api.gateway_chat`` (the ARES Gateway bridge)
 and is deliberately shaped like it: /api/chat/start still creates a normal
 local WebUI stream, /api/chat/stream still receives WebUI SSE event names,
 and the final turn is persisted back into the same WebUI session model.
 The only swapped piece is execution, which resolves in this order:
 
-1. **Gateway** — POST the turn to a JROS gateway server (``jaeger gateway``
-   — jaeger_os/interfaces/http_gateway.py in the JROS repo, or the
-   standalone ``webui/scripts/jros_gateway.py``) and relay its SSE reply.
-   Works with a JROS on the same machine or on another one entirely:
+1. **Gateway** — POST the turn to a JaegerAI gateway server (``jaeger gateway``)
+   and relay its SSE reply. It works locally or across the network:
 
        # where JROS is installed
        jaeger gateway --host 0.0.0.0 --port 8643
        # where ARES runs
        export ARES_JAEGER_GATEWAY_URL=http://<jaeger-host>:8643
 
-2. **Bridge fallback** — when no gateway is reachable but a local
-   Jaeger/JROS install is discoverable from ``ARES_JAEGER_HOME``,
+2. **Local bridge** — when no gateway is configured and a local JaegerAI
+   install is discoverable from ``ARES_JAEGER_HOME``,
    ``JAEGER_HOME``, the standard ``~/jaeger`` install path, or the legacy
-   ``ARES_JROS_DIR`` source-checkout override, ARES spawns JROS's
+   a validated development checkout, ARES spawns JaegerAI's
    ``jaeger bridge`` and speaks the documented v1 NDJSON client protocol
    over stdio. That keeps JROS inside its own venv/native dependency
    environment while preserving the local flip-the-toggle case. Bridge
    failures surface as actionable errors instead of crashes: an
-   already-running JROS (its exclusive instance lock) says close it or run
+   already-running JaegerAI (its exclusive instance lock) says close it or run
    ``jaeger gateway``, and a missing instance says run ``jaeger setup``.
 """
 from __future__ import annotations
@@ -59,7 +57,7 @@ from api.helpers import _redact_text, redact_session_data
 from api.providers.jaeger.bridge_client import JrosClient, JrosError
 from api.models import get_session, merge_session_messages_append_only
 from api.run_journal import RunJournalWriter
-from api.providers.jaeger.paths import discover_jros_source_root, jaeger_home, jros_instance_name
+from api.providers.jaeger.paths import jaeger_home, jros_instance_name
 
 logger = logging.getLogger(__name__)
 
@@ -165,13 +163,15 @@ _BRIDGE_TURN_LOCKS: dict[str, threading.RLock] = {}
 
 
 def local_jros_root() -> Path | None:
-    """The local JaegerAI/JROS runtime/source root for bridge fallback, or None.
+    """The local JaegerAI runtime/source root for bridge execution, or None.
 
     Resolution order keeps explicit source checkouts first, then the installed
     Jaeger/JaegerAI runtime path. This is what the installer detects as ``~/jaeger``
     on a normal user machine, and what ``ARES_JAEGER_HOME`` / ``JAEGER_HOME``
     override for nonstandard installs.
     """
+    from api.providers.jaeger.paths import is_jaeger_ai_root
+
     raw = (
         os.environ.get(_JAEGER_SOURCE_DIR_ENV)
         or os.environ.get(_LEGACY_SOURCE_DIR_ENV)
@@ -179,17 +179,15 @@ def local_jros_root() -> Path | None:
     ).strip()
     if raw:
         root = Path(raw).expanduser().resolve()
-        if (root / "jaeger_os").is_dir() or (root / "jaeger_ai").is_dir() or (root / "jaeger").exists():
-            return root
+        # Explicit dependency selection is fail-closed. Never hide a stale or
+        # legacy path by silently switching to a different checkout.
+        return root if is_jaeger_ai_root(root) else None
 
     try:
         root = jaeger_home()
     except Exception:
         root = None
-    if root is not None:
-        if (root / "jaeger_os").is_dir() or (root / "jaeger_ai").is_dir() or (root / "jaeger").exists():
-            return root
-    return discover_jros_source_root()
+    return root if root is not None and is_jaeger_ai_root(root) else None
 
 
 def _jros_instance_name() -> str | None:
@@ -269,7 +267,21 @@ def _reset_local_bridge_clients() -> None:
         try:
             client.close()
         except Exception:
-            logger.debug("Local JROS bridge cleanup failed", exc_info=True)
+            logger.debug("Local JaegerAI bridge cleanup failed", exc_info=True)
+
+
+def query_local_companion(what: str, args: dict[str, Any] | None = None) -> Any:
+    """Read the selected Companion through JaegerAI's public bridge protocol."""
+    instance = _jros_instance_name()
+    client = _get_or_start_bridge_client(instance)
+    return client.query(what, args or {})
+
+
+def command_local_companion(cmd: str, args: dict[str, Any] | None = None) -> Any:
+    """Ask JaegerAI to mutate its selected Companion through its bridge."""
+    instance = _jros_instance_name()
+    client = _get_or_start_bridge_client(instance)
+    return client.command(cmd, args or {})
 
 
 def _translate_bridge_frame(frame: dict[str, Any], put_jros_event, stream_id: str) -> None:
@@ -695,13 +707,6 @@ def _run_jros_chat_streaming(
             "user": f"webui:{session_id}",
             "messages": [*context_messages, {"role": "user", "content": str(msg_text or "")}],
         }
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(body).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
-
         # Reuse the Ares gateway SSE translators — the JROS gateway
         # deliberately speaks the same dialect.
         from api.gateway_chat import (
@@ -741,6 +746,14 @@ def _run_jros_chat_streaming(
                 usage["output_tokens"] = max(1, len(final_text.split()))
                 put_jros_event("token", {"text": final_text})
         else:
+            # Constructing Request with an empty gateway URL raises before the
+            # local bridge branch can run, so HTTP objects live only here.
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(body).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
             try:
                 resp_ctx = urllib.request.urlopen(req, timeout=600)
             except urllib.error.URLError as exc:
