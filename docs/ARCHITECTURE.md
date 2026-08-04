@@ -47,6 +47,19 @@ User message → create plan → execute step 1 → verify → execute step 2 �
 ### Parallel execution
 Independent steps run concurrently. Dependent steps run sequentially. Concurrency limits are configurable.
 
+## Delegation design (target)
+
+The dispatch path ARES is building, shaped by the Claude Code and Hermes source research:
+
+1. **Model-tool delegation** — delegation is a tool the model can call, same shape as Claude's `Agent` tool and Hermes `delegate_task`. The model decides when to delegate; the system executes. No separate dispatcher service.
+2. **Isolated child context** — each delegated task runs in an isolated context (clone parent state, child abort, no state write-back). Only the final summary returns to the parent conversation.
+3. **Async completion** — long tasks register in a task registry and notify back into the main loop when finished, so the parent conversation is not blocked (Claude's `LocalAgentTask` pattern).
+4. **Context slimming** — read-only specialists get a slim briefing: no repo context, no write tools (Claude's Explore/Plan pattern). Saves tokens, prevents side effects.
+5. **Depth and concurrency limits** — separate knobs: max nesting depth, max parallel children, total task budget. Claude defaults: depth 3, concurrent 20. ARES: configurable, conservative default.
+6. **Durable swarm topology** — multi-step unattended work runs as planning root → parallel workers → verifier → synthesizer with results on a shared blackboard (Hermes Kanban Swarm pattern). Every handoff is a durable row; the run survives restarts.
+
+Reference: `claude-code-dispatch-research.md` (GitHub + analysis folders), `ares-jaeger-lessons.md`.
+
 ## Guard and verification
 
 ARES enforces a hard boundary between *the model proposes* and *the system acts*:
@@ -149,6 +162,38 @@ Filtered, budgeted context per task: identity, user context, project context, re
 ### WorkerResult (what workers return)
 
 Structured result: content, artifacts, tool calls, confidence, cost report, metadata, and verification evidence.
+
+## Worker integration (what each backend needs in code)
+
+### Jaeger AI (`jaeger_local`)
+- **Bridge protocol v1** over stdio (NDJSON) — ARES sends a turn, Jaeger resumes its own session, streams output back
+- `save_identity` / `select_character` / `make_default` commands for assistant name/persona projection
+- Gateway mode: HTTP to Jaeger gateway at `ARES_JAEGER_GATEWAY_URL` with `ARES_JAEGER_GATEWAY_KEY`
+- Validation: discover a real JaegerAI product root; reject legacy JROS installs
+- Contract: `/api/companion` normalized client surface
+
+### Hermes (`hermes_local`)
+- Hermes CLI as subprocess: `hermes --session <id> --prompt "<turn>"` (or `hermes run`)
+- Or gateway mode: HTTP to Hermes gateway, session resume via session ID
+- Skills live in Hermes profiles (`~/.hermes/profiles/<name>/skills/`) — ARES does not duplicate them
+- Delegation inside Hermes uses `delegate_task` (max_concurrent_children 3, max_spawn_depth 1 on this machine)
+
+### Claude Code (`claude_local`)
+- CLI subprocess: `claude -p "<prompt>" --resume <session_id>` or `claude --fork-session` for a new branch
+- Read-only transcript import from `~/.claude/projects/**/*.jsonl` (mode=ro, never write)
+- Built-in subagents (Explore/Plan/general) available inside the CLI; ARES does not reimplement them
+- Disallow write tools for read-only tasks via `--disallowedTools`
+
+### Codex (`codex_local`)
+- CLI subprocess: `codex exec --session <id> "<prompt>"` (or `codex resume`)
+- Session store at `~/.codex/sessions/**` — detect, not parse
+
+### Ollama (`ollama_local`)
+- HTTP API: `POST /api/chat` with model name, streaming
+- Local-only data class: never receives private/sensitive data from cloud-capable path
+
+### Common adapter contract
+Every backend implements the `ReasoningProvider` protocol (worker_id, provider, capabilities, data_location, privacy_class, health check, generate). ARES never imports a worker's execution loop — subprocess or network adapter only.
 
 ## Runtime invariants
 
