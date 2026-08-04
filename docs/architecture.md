@@ -47,6 +47,41 @@ User message → create plan → execute step 1 → verify → execute step 2 �
 ### Parallel execution
 Independent steps run concurrently. Dependent steps run sequentially. Concurrency limits are configurable.
 
+## Paperclip parity (first principles)
+
+Paperclip is a functional multi-agent framework. From its source (`SPEC-implementation.md`, `PRODUCT.md`, `docs/start/architecture.md`), its core loop is:
+
+```
+Board defines goals → org tree of agents → heartbeat scheduler fires
+  → adapter execute() spawns agent → agent works via REST API
+  → result + cost captured → run recorded → budget checked → audit logged
+```
+
+Comparing against ARES's actual code (`core/si/`), first principles:
+
+| Paperclip capability | ARES equivalent (verified in code) | Status |
+|---|---|---|
+| Task hierarchy → goal | `planner.py` Plan/Step model with dependencies | ✅ exists |
+| Task assignment | `planner.assign_workers`, `worker_registry.find_eligible` | ✅ exists |
+| Agent registry + capabilities | `worker_registry.py` (register, find_by_capability, availability) | ✅ exists |
+| Adapters (any runtime) | `integrations/workers/` + `ReasoningProvider` protocol | ✅ exists |
+| Approval gates | `core/authority/route_approvals.py`, `os_automation_consent.py`, trust_engine approval checks | ✅ exists |
+| Audit trail | `core/events/turn_journal.py`, `run_journal.py`, disclosure ledger | ✅ exists |
+| Verification of results | `evaluator.py` (6 checks) + `response_composer.py` | ✅ exists |
+| **Heartbeat scheduler** | `api/schedule_scheduler.py`, `schedules_store.py` | ⚠️ exists but not wired to plans/runs |
+| **Run records + session resume across runs** | `run_journal.py` + session lifecycle | ⚠️ partial |
+| **Budget enforcement (hard stop)** | none | ❌ missing |
+| **Board/org chart/companies** | — | N/A by design (one assistant, no org — see vision.md) |
+
+**Verdict: yes — ARES's core is capable of what Paperclip does, minus the company layer (deliberately rejected).** The primitives exist: plan, assign, dispatch, verify, approve, audit. The missing loop is the **heartbeat → run → budget cycle** that makes work happen unattended:
+
+1. **Heartbeat scheduler** wakes a plan on timer / assignment / on-demand
+2. **Run executor** dispatches via adapters, records the run in `run_journal`
+3. **Budget meter** checks spend against limits — soft alert, then hard pause
+4. **Session resume** continues the worker's session across heartbeats (Paperclip's session state capture → next heartbeat)
+
+That closes the parity gap without copying Paperclip's org chart. Steal the engine, skip the company (per vision.md).
+
 ## Delegation design (target)
 
 The dispatch path ARES is building, shaped by the Claude Code and Hermes source research:
@@ -57,6 +92,7 @@ The dispatch path ARES is building, shaped by the Claude Code and Hermes source 
 4. **Context slimming** — read-only specialists get a slim briefing: no repo context, no write tools (Claude's Explore/Plan pattern). Saves tokens, prevents side effects.
 5. **Depth and concurrency limits** — separate knobs: max nesting depth, max parallel children, total task budget. Claude defaults: depth 3, concurrent 20. ARES: configurable, conservative default.
 6. **Durable swarm topology** — multi-step unattended work runs as planning root → parallel workers → verifier → synthesizer with results on a shared blackboard (Hermes Kanban Swarm pattern). Every handoff is a durable row; the run survives restarts.
+7. **Heartbeat loop** (Paperclip pattern) — scheduler wakes work on timer/assignment/on-demand; run executor dispatches via adapters and records the run; budget meter checks spend (soft alert → hard pause); session state resumes across heartbeats. This is the unattended-work loop that Paperclip ships and ARES is missing.
 
 Reference: `claude-code-dispatch-research.md` (GitHub + analysis folders), `ares-jaeger-lessons.md`.
 
