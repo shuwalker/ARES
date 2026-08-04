@@ -566,30 +566,36 @@ html[data-skin="neon-paint"] {
   --ring: oklch(0.78 0.2 145);
 }
 
+
+  
+  /* Keep toolbar minimal gap */
+  .conversation-toolbar-simplified {
+    gap: 0.25rem !important;
+  }
+}
+
 /* === ARES Mobile Toolbar Simplification === */
-/* Hide advanced toolbar chips on mobile ≤640px - keep only Attach, Dictate, Send/Stop */
+/* Hide advanced chips on iPhone - keep Attach, Dictate, Send visible */
 @media (max-width: 640px) {
-  /* Hide all advanced chips by targeting their containers and buttons */
-  .conversation-toolbar .toolbar-advanced,
-  .conversation-toolbar div[data-menu-wrapper],
+  /* Hide by targeting button titles and wrapper divs */
   .conversation-toolbar button[title*="Character"],
   .conversation-toolbar button[title*="workspace"],
   .conversation-toolbar button[title*="Model"],
   .conversation-toolbar button[title*="Reasoning"],
   .conversation-toolbar button[title*="YOLO"],
   .conversation-toolbar button[title*="Toolsets"],
-  .conversation-toolbar button[title*="Context"],
-  .conversation-toolbar div[style*="flexShrink"][style*="maxWidth"],
-  .conversation-toolbar span[style*="ellipsis"] {
+  .conversation-toolbar div[style*="message count"],
+  .conversation-toolbar span[style*="ellipsis"][style*="flexShrink"],
+  .conversation-toolbar [style*="maxWidth"][style*="flexShrink"] {
     display: none !important;
-    visibility: hidden !important;
-    width: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
   }
   
-  /* Keep toolbar minimal gap */
-  .conversation-toolbar-simplified {
+  /* Hide divider */
+  .conversation-toolbar div[style*="H.border2"] {
+    display: none !important;
+  }
+  
+  .conversation-toolbar {
     gap: 0.25rem !important;
   }
 }
