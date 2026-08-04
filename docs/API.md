@@ -308,10 +308,10 @@ Legacy SI preference keys retained for migration compatibility:
 | `si_cal_initiative` | `reactive`, `balanced`, `proactive` |
 | `si_cal_notes` | String, trimmed, maximum 2,000 characters, no null byte |
 
-These keys are not shown as active SI controls. New Companion identity and
+These keys are not shown as active controls. New assistant identity and
 character clients use `/api/companion`.
 
-## 6. Companion API (`/api/companion`)
+## 6. Assistant API (`/api/companion`)
 
 This normalized contract keeps the React and Mac surfaces independent of
 JaegerAI's internal files and schemas.

@@ -35,7 +35,7 @@ The Mac app expects the Web UI source and Python environment to exist in the
 repo checkout. It can start the Web UI server for you, but it is not yet a
 fully self-contained drag-and-drop app.
 
-## Windows Companion App Mode
+## Windows App Mode
 
 Use this when you want the Windows native wrapper around the ARES Web UI. This
 is the Windows version of the native app idea: a Tauri shell that opens the Web
@@ -106,7 +106,7 @@ That packaging is not complete yet. Current native builds are for
 local/developer use. The native app is an ARES control shell around the Web UI;
 it does not replace JaegerAI's character/runtime app or Hermes's own TUI.
 
-## Windows Companion App Notes
+## Windows App Notes
 
 The Windows/Tauri companion app notes live at
 [ARES-Windows/INSTALL.md](ARES-Windows/INSTALL.md).

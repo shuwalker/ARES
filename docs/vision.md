@@ -37,7 +37,7 @@ ARES is one product with multiple surfaces over the same controller:
 | **Life** | Tasks, routines, goals, schedules, personal organization |
 | **Library** | Knowledge, documents, collections, artifacts |
 | **Control Center** | Live agents, delegated tasks, tools, services, approvals, memory, activity |
-| **Settings** | SI identity, appearance, chat, system configuration |
+| **Settings** | identity, appearance, chat, system configuration |
 
 ## Current state
 
@@ -46,7 +46,7 @@ ARES is one product with multiple surfaces over the same controller:
 - Controller planner, worker registry, persisted plan state, orchestration tests
 - `jaeger_local`, `hermes_local`, `claude_local`, `codex_local`, `ollama_local` backends
 - Native macOS app + Web UI on port 8788
-- SI Settings with JaegerAI bridge v1
+- Settings with JaegerAI bridge v1
 - Trust engine, evaluator, response composer, router
 
 **In progress:**

@@ -88,7 +88,7 @@ ARES never writes another app's store. When a worker session needs a new turn, A
 
 ### Context assembly
 
-Workers never see the full journal. The context compiler assembles a filtered, token-budgeted briefing per task: SI identity, relevant user context, project context, recent conversation, relevant memories, constraints, privacy policy, available tools, and output requirements.
+Workers never see the full journal. The context compiler assembles a filtered, token-budgeted briefing per task: identity, relevant user context, project context, recent conversation, relevant memories, constraints, privacy policy, available tools, and output requirements.
 
 ## System boundaries
 
@@ -144,7 +144,7 @@ class ReasoningProvider(Protocol):
 
 ### ContextBriefing (what ARES sends to workers)
 
-Filtered, budgeted context per task: SI identity, user context, project context, recent conversation, relevant memories, constraints, privacy policy, available tools, output requirements, and a manifest of what was included/excluded/redacted.
+Filtered, budgeted context per task: identity, user context, project context, recent conversation, relevant memories, constraints, privacy policy, available tools, output requirements, and a manifest of what was included/excluded/redacted.
 
 ### WorkerResult (what workers return)
 
