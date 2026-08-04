@@ -49,6 +49,8 @@ from .sam_conversation import router as sam_conversation_router
 from .journal import router as journal_router
 from .readiness import router as readiness_router
 from .delegation import router as delegation_router
+from .dispatch import router as dispatch_router
+from .dispatch_chat import router as dispatch_chat_router
 from .product_state import router as product_state_router
 from .rankings import router as rankings_router
 from .jaeger_onboarding import router as jaeger_onboarding_router
@@ -105,6 +107,8 @@ def install_core_routers(application: FastAPI) -> None:
     application.include_router(journal_router)
     application.include_router(readiness_router)
     application.include_router(delegation_router)
+    application.include_router(dispatch_router)
+    application.include_router(dispatch_chat_router)
     application.include_router(product_state_router)
     application.include_router(rankings_router)
     application.include_router(jaeger_onboarding_router)

@@ -529,6 +529,57 @@ BackendRegistry.register(OpenCodeAppBackend)
 
 
 # ---------------------------------------------------------------------------
+# Jaeger AI Backend (local bridge + cloud gateway, auto-detected)
+# ---------------------------------------------------------------------------
+
+class JaegerAIBackend(AgenticBackend):
+    """Jaeger AI backend — supports local (bridge) and cloud (gateway) modes.
+
+    Auto-detects configuration from environment variables (no hardcoding):
+    - ARES_JAEGER_HOME / JAEGER_HOME: Jaeger installation root
+    - ARES_JAEGER_SOURCE_DIR: Development checkout location
+    - ARES_JAEGER_INSTANCE / JAEGER_INSTANCE_NAME: Instance selection
+    """
+
+    name = "jaeger_local"
+    display_label = "Jaeger AI (Local + Cloud)"
+    supports_tools = True
+    supports_persona = False
+
+    def __init__(self):
+        from integrations.workers.jaeger_worker import JaegerWorker
+        self._worker = JaegerWorker()
+
+    def is_available(self) -> bool:
+        """Check if Jaeger AI is available (bridge or gateway mode)."""
+        return self._worker.is_available()
+
+    def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
+        """Execute a turn in Jaeger AI."""
+        return self._worker.run_turn(message, session_id, **kwargs)
+
+    def health(self) -> Dict[str, Any]:
+        """Health check status."""
+        return self._worker.health()
+
+    def capabilities(self) -> Dict[str, Any]:
+        """Available capabilities and models."""
+        return self._worker.capabilities()
+
+    def identity_projection(self) -> Dict[str, Any]:
+        """Identity info for UI."""
+        mode = self._worker.mode or "unknown"
+        return {
+            "name": self.name,
+            "description": f"Jaeger AI ({mode} mode)",
+            "avatar_state": "connected" if self._worker.mode else "disconnected",
+        }
+
+
+BackendRegistry.register(JaegerAIBackend)
+
+
+# ---------------------------------------------------------------------------
 # Legacy CLI backends — kept for backward compatibility but deprecated.
 # New code should use the SDK-based backends above.
 # ---------------------------------------------------------------------------
