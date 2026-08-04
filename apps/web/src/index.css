@@ -564,3 +564,16 @@ html[data-skin="neon-paint"] {
   --primary: oklch(0.78 0.2 145);
   --ring: oklch(0.78 0.2 145);
 }
+
+/* === ARES Mobile Toolbar Simplification === */
+/* Hide advanced toolbar chips on mobile - keep only Attach, Dictate, Send/Stop */
+@media (max-width: 640px) {
+  .conversation-toolbar .toolbar-advanced {
+    display: none !important;
+  }
+  
+  /* Simplify toolbar gap on mobile */
+  .conversation-toolbar-simplified {
+    gap: 0.5rem !important;
+  }
+}
