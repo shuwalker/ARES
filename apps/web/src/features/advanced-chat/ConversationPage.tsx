@@ -1281,7 +1281,7 @@ export function ConversationPage() {
               </div>
 
               {/* Context window usage ring */}
-              <div className="toolbar-advanced" style={{ display: "contents" }}> — shows message count as session progress */}
+              <div className="toolbar-advanced" style={{ display: "contents" }}> {/* Context ring */}
               <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "1.625rem", height: "1.625rem", borderRadius: "50%", background: H.surface, border: `1px solid ${H.border}`, color: H.muted, flexShrink: 0, marginRight: "0.25rem", position: "relative" }} title={`Context: ${currentSession?.messageCount ?? 0} messages`}>
                 <svg viewBox="0 0 24 24" width="16" height="16" style={{ transform: "rotate(-90deg)" }}>
                   <circle cx="12" cy="12" r="9.75" fill="none" stroke="currentColor" strokeWidth="2.5" opacity="0.2" />

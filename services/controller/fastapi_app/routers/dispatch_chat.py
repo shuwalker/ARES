@@ -144,6 +144,8 @@ def dispatch_chat_start(
         result = dispatch_service.dispatch_turn(
             user_message=message,
             conversation_id=session_id,
+            model=model or None,
+            model_provider=model_provider or None,
         )
 
         # Store streaming events for WebSocket subscriber to read
@@ -183,6 +185,7 @@ def _store_dispatch_events(stream_id: str, session_id: str, result: dict[str, An
                 append_turn_journal_event(
                     session_id=session_id,
                     event={
+                        "event": event.get("event", "unknown"),
                         "stream_id": stream_id,
                         "event_type": event.get("event", "unknown"),
                         "data": event.get("data", {}),

@@ -34,6 +34,8 @@ class DispatchService:
         local_only_mode: bool = False,
         si_name: str = "Leo",
         owner_name: str = "User",
+        model: str | None = None,
+        model_provider: str | None = None,
     ) -> Dict[str, Any]:
         """Execute a full dispatch turn for a user message.
 
@@ -124,7 +126,12 @@ class DispatchService:
         if worker is not None:
             try:
                 if hasattr(worker, "run_turn"):
-                    turn_res = worker.run_turn(user_message, session_id=conversation_id)
+                    turn_res = worker.run_turn(
+                        user_message,
+                        session_id=conversation_id,
+                        model=model,
+                        model_provider=model_provider,
+                    )
                     if isinstance(turn_res, dict):
                         raw_output = turn_res.get("text") or turn_res.get("response") or str(turn_res)
                     else:

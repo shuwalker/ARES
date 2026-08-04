@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def is_jaeger_available() -> bool:
     """Check if Jaeger AI is available (either bridge or gateway)."""
-    from api.providers.jaeger.status import status
+    from integrations.providers.jaeger.status import status
 
     try:
         s = status()
@@ -31,7 +31,7 @@ def get_jaeger_models() -> Dict[str, Any]:
 
     Returns dict with model info from active Jaeger instance.
     """
-    from api.providers.jaeger.gateway_streaming import (
+    from integrations.providers.jaeger.gateway_streaming import (
         jros_gateway_base_url,
         jros_gateway_health,
         local_jros_root,
@@ -88,7 +88,7 @@ class JaegerWorker:
 
     def _probe_availability(self):
         """Detect which mode is available."""
-        from api.providers.jaeger.gateway_streaming import (
+        from integrations.providers.jaeger.gateway_streaming import (
             jros_gateway_base_url,
             local_jros_root,
         )
@@ -122,7 +122,7 @@ class JaegerWorker:
         """Check if this worker is ready to execute."""
         return self.mode is not None
 
-    def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
+    def run_turn(self, message: str, session_id: str, model: str | None = None, model_provider: str | None = None, **kwargs) -> Dict[str, Any]:
         """Execute a turn in Jaeger AI.
 
         Returns structured result with text, tokens, model info.
@@ -135,9 +135,9 @@ class JaegerWorker:
 
         try:
             if self.mode == "gateway":
-                return self._execute_gateway(message, session_id, **kwargs)
+                return self._execute_gateway(message, session_id, model=model, model_provider=model_provider, **kwargs)
             elif self.mode == "bridge":
-                return self._execute_bridge(message, session_id, **kwargs)
+                return self._execute_bridge(message, session_id, model=model, model_provider=model_provider, **kwargs)
             else:
                 return {"error": "Unknown Jaeger mode", "text": ""}
         except Exception as e:
@@ -147,18 +147,23 @@ class JaegerWorker:
                 "text": f"Error: {str(e)}",
             }
 
-    def _execute_gateway(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
+    def _execute_gateway(self, message: str, session_id: str, model: str | None = None, model_provider: str | None = None, **kwargs) -> Dict[str, Any]:
         """Execute via Jaeger gateway (HTTP, cloud models)."""
         import requests
 
         try:
+            payload = {
+                "message": message,
+                "session_id": session_id,
+                **kwargs,
+            }
+            if model:
+                payload["model"] = model
+            if model_provider:
+                payload["provider"] = model_provider
             response = requests.post(
                 f"{self.gateway_url}/turn",
-                json={
-                    "message": message,
-                    "session_id": session_id,
-                    **kwargs,
-                },
+                json=payload,
                 timeout=60.0,
             )
             response.raise_for_status()
@@ -176,7 +181,7 @@ class JaegerWorker:
             logger.error("Gateway execution failed: %s", e)
             raise
 
-    def _execute_bridge(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
+    def _execute_bridge(self, message: str, session_id: str, model: str | None = None, model_provider: str | None = None, **kwargs) -> Dict[str, Any]:
         """Execute via Jaeger bridge (subprocess, local models)."""
         import subprocess
 
@@ -187,6 +192,10 @@ class JaegerWorker:
                 "session_id": session_id,
                 **kwargs,
             }
+            if model:
+                input_data["model"] = model
+            if model_provider:
+                input_data["provider"] = model_provider
 
             # Call jaeger bridge subprocess
             result = subprocess.run(
