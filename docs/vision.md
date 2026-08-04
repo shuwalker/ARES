@@ -51,7 +51,8 @@ ARES is one product with multiple surfaces over the same controller:
 
 **In progress:**
 - System Settings: startup destination, preference reset, diagnostic export
-- Multi-agent delegation from the primary chat path
+- Auto-delegation from the primary chat path (model-tool delegation, isolated child context, async completion — see architecture.md)
+- Worker integrations: Jaeger bridge v1 done; Hermes, Claude Code, Codex adapters in progress
 - Control Center live visualization
 - End-to-end result synthesis and verification
 
