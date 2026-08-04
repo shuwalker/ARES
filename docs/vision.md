@@ -4,6 +4,13 @@
 
 ARES (Artificial Reasoning & Execution System) is one assistant. It remembers everything, verifies before acting, and uses whatever model or agent is best for the task. The agents are replaceable hands — swap any model underneath and nothing is lost. There is no org chart, no CEO, no hiring.
 
+## Product model
+
+- **Board** — the human. Approvals, strategy, and decisions are human actions. The board sees everything agents do.
+- **Leo** — the default agent you talk to. One continuous assistant with one conversation, one memory.
+- **Org** — the other agents working in the background: Jaeger, Hermes, Claude Code, Codex, Ollama. They are visible in Control Center, take on work Leo or the board assigns, and report back. They are not a corporate hierarchy.
+- **Mutual audit** — agents verify each other's work. Results pass through cross-checks and evaluation (LangGraph-style graph of verification), so no single agent's output is trusted unverified.
+
 ## The problem it solves
 
 Right now you have five AI tools that don't share memory and can't hand work to each other. You are the integrator — copying results between them, remembering which one knows what, babysitting terminals. That is the job ARES takes over.

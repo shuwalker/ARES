@@ -96,6 +96,19 @@ The dispatch path ARES is building, shaped by the Claude Code and Hermes source 
 
 Reference: `claude-code-dispatch-research.md` (GitHub + analysis folders), `ares-jaeger-lessons.md`.
 
+## Mutual audit (LangGraph-style verification graph)
+
+Agents verify each other's work — no single agent's output is trusted unverified:
+
+1. **Producer** — a worker (Jaeger, Hermes, Claude, Codex, Ollama) executes a step and returns a structured `WorkerResult`.
+2. **Evaluator** — `core/si/evaluator.py` runs 6 checks: not-empty, reasonable length, no secret leak, no harmful content, code syntax, factuality markers.
+3. **Cross-checker** — for high-stakes steps, a *different* worker reviews the result against the step objective (verifier role). The verifier's output is itself checked.
+4. **Approval** — if the step requires approval, `core/authority/route_approvals.py` gates before the result is applied.
+5. **Composer** — `core/si/response_composer.py` merges verified results into one coherent response with provenance.
+6. **Journal** — every check, cross-check, and approval is appended to `core/events/turn_journal.py` / `run_journal.py` — the audit trail.
+
+This mirrors LangGraph's graph-of-nodes model: each node (producer, verifier, synthesizer) runs, passes state along edges, and conditional edges route failures to retry or human escalation. ARES's implementation is the planner/orchestrator/evaluator in `core/si/`, not a new runtime.
+
 ## Guard and verification
 
 ARES enforces a hard boundary between *the model proposes* and *the system acts*:

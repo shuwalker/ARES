@@ -13,15 +13,20 @@ context into tool-specific instruction files.
 
 ## What ARES is
 
-ARES is a Mac-first, local-first application that hosts a persistent Synthetic
-Intelligence experience. ARES owns identity, user context, sessions, policy,
-permissions, task state, artifacts, routing, and verification. Replaceable
-workers such as Jaeger AI, Hermes, Codex, Claude, Ollama, and cloud models supply
-reasoning or execution.
+ARES (Artificial Reasoning & Execution System) is one AI assistant backed by
+multiple agents and a deterministic verification loop. ARES owns identity, user
+context, sessions, policy, permissions, task state, artifacts, routing, and
+verification. Replaceable workers such as Jaeger AI, Hermes, Codex, Claude,
+Ollama, and cloud models supply reasoning or execution — they are hands, never
+the product identity.
 
-The product principle is **one identity, many workers**. The user talks to one
-continuous SI. ARES may plan work, create sessions, and delegate steps to
-specialist workers, but a worker is never the product identity.
+Product model:
+- **Board** — the human. Approvals, strategy, and decisions are human actions.
+- **Leo** — the default agent you talk to. One continuous assistant.
+- **Org** — the other agents working in the background (Jaeger, Hermes, Claude,
+  Codex, Ollama). Visible in Control Center; never corporate hierarchy.
+- **Mutual audit** — agents verify each other's work (LangGraph-style graph of
+  evaluation/cross-check), not a chain of command.
 
 ## Non-negotiable boundaries
 
@@ -46,7 +51,7 @@ The primary environments are:
 
 The Settings utility contains:
 
-`SI | Appearance | Chat | System`
+`Identity | Appearance | Chat | System`
 
 See [Product Specification](docs/PRODUCT_SPEC.md) and the relevant feature
 specification before changing navigation or ownership.
@@ -66,15 +71,13 @@ specification before changing navigation or ownership.
 
 | If changing… | Read first |
 | --- | --- |
-| Product language, tabs, or ownership | [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md), relevant `docs/features/` spec |
-| Processes, state, adapters, or events | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
-| Routes, settings keys, or wire formats | [`docs/API.md`](docs/API.md) |
-| Permissions, secrets, or external actions | [`docs/SECURITY.md`](docs/SECURITY.md) |
-| Setup, tests, packaging, or deployment | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) |
-| Current milestone or known gaps | [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) |
-| SI Settings | [`docs/features/si-personalization.md`](docs/features/si-personalization.md) |
-| App/System Settings | [`docs/features/system-settings.md`](docs/features/system-settings.md) |
-| Agent delegation or orchestration | [`docs/features/multi-agent-orchestration.md`](docs/features/multi-agent-orchestration.md) |
+| Product language, tabs, or ownership | [`docs/vision.md`](docs/vision.md) |
+| Processes, state, adapters, or events | [`docs/architecture.md`](docs/architecture.md) |
+| Routes, settings keys, or wire formats | [`docs/api.md`](docs/api.md) |
+| Permissions, secrets, or external actions | [`SECURITY.md`](SECURITY.md) |
+| Setup, tests, packaging, or deployment | [`docs/development.md`](docs/development.md) |
+| Current milestone or known gaps | [`docs/vision.md`](docs/vision.md) (Current state) |
+| Agent delegation or orchestration | [`docs/architecture.md`](docs/architecture.md) (Dispatch model, Delegation design) |
 
 When documents disagree, do not choose silently. Source and tests describe
 implemented behavior; accepted architecture/decision records describe required
@@ -84,7 +87,7 @@ the drift and update the affected contract with the code change.
 ## Working protocol
 
 1. Run `git status -sb` and identify existing user work.
-2. Read `docs/CURRENT_STATE.md` and route through `docs/README.md`.
+2. Read `docs/vision.md` and route through `docs/README.md`.
 3. Inspect the source and tests named by the relevant feature spec.
 4. State the owner of changed state, the contract, and the acceptance evidence.
 5. Make the smallest coherent change. Do not mix repository-wide cleanup into a
@@ -110,7 +113,7 @@ cd services/controller
 
 Use targeted controller tests while iterating. The complete controller suite is
 large and currently has inherited reorganization debt recorded in
-`docs/CURRENT_STATE.md`.
+`docs/vision.md`.
 
 ## Documentation contract
 
