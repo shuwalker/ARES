@@ -2,7 +2,7 @@
 
 ## What ARES is
 
-ARES is one AI assistant backed by multiple agents and a deterministic verification loop. You talk to one thing. Underneath, it dispatches workers — Jaeger, Hermes, Claude Code, Codex, Ollama — verifies their work before acting, and returns one answer. The agents are internals. There is no org chart, no CEO, no hiring.
+ARES (Artificial Reasoning & Execution System) is one assistant. It remembers everything, verifies before acting, and uses whatever model or agent is best for the task. The agents are replaceable hands — swap any model underneath and nothing is lost. There is no org chart, no CEO, no hiring.
 
 ## The problem it solves
 

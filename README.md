@@ -1,10 +1,10 @@
 # ARES
 
-**One AI assistant. Multiple agents underneath.**
+**Artificial Reasoning & Execution System**
 
-You talk to one thing — one conversation, one memory, one place that knows you. Underneath, ARES uses multiple agents to get work done: Jaeger for local tasks, Hermes for general work, Claude Code for coding, Ollama for local inference. You never talk to those agents directly. You talk to ARES, and ARES picks the right tool for the job, runs several in parallel when needed, and comes back with one answer.
+One assistant. Persistent memory. Verified action.
 
-The agents are replaceable hands. Swap any model or runtime underneath and nothing is lost — ARES holds the memory, the plans, the history, and the verification.
+You talk to one thing — one conversation, one memory, one place that knows you. ARES remembers everything, verifies before acting, and uses whatever model or agent is best for the task. The agents are replaceable hands. Swap any model underneath and nothing is lost.
 
 ## Quick Start
 
@@ -35,7 +35,7 @@ ARES/
 ├── apps/macos/            # Native macOS app (SwiftUI/WKWebView)
 ├── apps/web/              # React/TypeScript SPA
 ├── services/controller/   # FastAPI backend + API + tests
-├── core/                  # SI core: planner, orchestrator, trust, verification
+├── core/                  # Planner, orchestrator, trust, verification
 ├── integrations/          # Worker adapters (Jaeger, Hermes, Claude, Codex, Ollama)
 └── docs/                  # Documentation
 ```
