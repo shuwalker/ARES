@@ -1,252 +1,173 @@
-# System Architecture & Design
+# ARES Architecture
 
-| Attribute | Details |
-| :--- | :--- |
-| **Status** | Canonical System Reference |
-| **Audience** | Maintainers, System Engineers, AI Engineers |
-| **Owner** | ARES architecture maintainers |
-| **Last verified** | 2026-08-01 |
-| **Source of truth** | Process boundaries, adapters, source modules, and contract tests |
+## Process topology
 
-This document describes the machine architecture of ARES: process topology, system boundaries, decoupled state storage models, context assembly, and turn orchestration.
-
----
-
-## 1. Process Topology
-
-The ARES platform consists of a three-tier architecture: the Client Layer, the Assistant Controller Backend, and Pluggable AI Runtimes.
-
-```mermaid
-flowchart TD
-    subgraph Client ["1. Client Layer"]
-        ReactUI["React SPA / TypeScript (apps/web/)"]
-        MacUI["Native macOS Shell (apps/macos/)"]
-    end
-
-    subgraph Controller ["2. Assistant Controller Backend"]
-        FastAPI["FastAPI App (services/controller/fastapi_app/)"]
-        CoreLogic["Core Services & Logic (core/ & api/)"]
-        SQLiteDB[(Persistent State & Memory Store)]
-    end
-
-    subgraph Runtimes ["3. AI Runtimes & Execution Agents"]
-        LocalModels["Local Models (Jaeger AI, Ollama)"]
-        AgentRuntimes["Agent Runtimes (Hermes, Claude Code, Codex)"]
-        CloudAPIs["Cloud APIs & Remote MCP Servers"]
-    end
-
-    Client -->|HTTP / SSE| Controller
-    Controller -->|Subprocess / API Adapters| Runtimes
+```
+Browser / Native App
+  │  HTTP + SSE
+  ▼
+FastAPI Controller (services/controller/fastapi_app/)
+  │  routers → api/ business logic
+  ▼
+Worker Adapters (integrations/workers/)
+  │  subprocess per turn
+  ▼
+Worker processes: Jaeger AI · Hermes · Claude Code · Codex · Ollama · cloud APIs
 ```
 
-### Layer Responsibilities
+Three layers, one product:
 
-1. **Client Layer (`apps/web/`, `apps/macos/`)**: Web and native applications presenting the same ARES concepts. The Web UI normalizes backend payloads through `apps/web/src/shared/translators.ts`.
-2. **Assistant Controller (`services/controller/`)**: FastAPI application server handling request identity, authentication, session lifecycle, task planning, and context assembly.
-3. **AI Runtimes (`integrations/workers/`, `api/backends/`)**: External AI models and agent frameworks invoked as isolated subprocesses or API clients.
+| Layer | Owns |
+|-------|------|
+| Client (`apps/web/`, `apps/macos/`) | Presentation, navigation, user interaction |
+| Controller (`services/controller/`) | Sessions, identity, auth, context assembly, streaming |
+| Workers (`integrations/workers/`) | Model inference, tool execution, code loops |
 
----
+## Dispatch model
 
-## 2. Decoupled Read-Only State Storage
+ARES dispatches work to agents through a planner → orchestrator → worker pipeline:
 
-ARES enforces a strict one-way state isolation pattern between the platform store and external AI runtimes:
+1. **User sends a message** in the Agent conversation
+2. **ARES classifies the request** — simple (direct response) or complex (needs a plan)
+3. **For complex requests:** the planner decomposes into steps with dependencies, the orchestrator assigns steps to workers by capability/privacy/cost, and steps execute sequentially or in parallel
+4. **Each worker** receives a filtered context briefing (not the full journal), executes in an isolated subprocess, and returns a structured result
+5. **The evaluator** checks every result before the response composer presents it to the user
+6. **Control Center** shows live plans, active workers, progress, approvals, and provenance
 
-```mermaid
-flowchart LR
-    subgraph ARESStore ["ARES State Store (Read & Write)"]
-        ARESSessions["ARES_HOME/webui/sessions/*.json"]
-    end
-
-    subgraph ExternalStores ["External Runtime Stores (Read-Only: mode=ro)"]
-        HermesDB["$HERMES_HOME/state.db"]
-        ClaudeDB["~/.claude/projects/**/*.jsonl"]
-        JaegerDB["<jaeger>/instances/*/memory/*.db"]
-    end
-
-    ARESStore -->|Reads External Transcripts| ExternalStores
-    style ExternalStores stroke-dasharray: 5 5
+### Simple tasks
+```
+User message → classify intent → pick worker → send briefing → get result → verify → respond
 ```
 
-> [!IMPORTANT]
-> **State Isolation Guarantee**
-> ARES never mutates external runtime databases. External databases are opened strictly in read-only mode (`?mode=ro`). When an AI runtime finishes a turn, it records state within its own internal database, while ARES maintains its authoritative task and session state in `ARES_HOME`.
-
----
-
-## 3. Component Boundaries & Responsibilities
-
-| System Component | Component Owner | Responsibilities |
-| :--- | :--- | :--- |
-| **Identity & Policy** | Platform Controller | User profile, system behavior, data privacy rules, authorization gates. |
-| **Persistent Memory** | Platform Controller | Event log, searchable message history (SQLite FTS5), task repository. |
-| **Context Assembly** | Platform Controller | Context retrieval, token budget packing, sensitive data redaction. |
-| **Turn Execution** | AI Runtimes | Model inference, tool call invocation, code execution loops. |
-| **Output Evaluation** | Platform Controller | Verification of runtime output, tool response validation, event recording. |
-
----
-
-## 4. Turn Orchestration & Chat Execution Flow
-
-When a user submits a message, execution follows a standard request-response pipeline:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant Client as Web / Desktop Client
-    participant Controller as Assistant Controller
-    participant Engine as Context Assembly
-    participant Runtime as AI Runtime Subprocess
-    participant Storage as SQLite Event Store
-
-    User->>Client: Submit Chat Message
-    Client->>Controller: POST /api/chat/start
-    Controller->>Engine: Retrieve Context & Redact Secrets
-    Engine-->>Controller: Return Token-Budgeted Briefing
-    Controller->>Runtime: Launch Subprocess (subprocess.Popen)
-    Runtime-->>Controller: Stream Output Tokens & Tool Events
-    Controller-->>Client: Stream SSE Events (text/event-stream)
-    Controller->>Storage: Record Completed Turn & Metrics
+### Complex tasks
+```
+User message → create plan → execute step 1 → verify → execute step 2 → verify → ... → synthesize → respond
 ```
 
-### Execution Steps
-1. **Request Ingestion**: The client issues `POST /api/chat/start` with user message and session parameters.
-2. **Context Assembly**: The platform queries FTS5 memory, applies privacy redaction rules, and compiles a token-budgeted prompt briefing.
-3. **Subprocess Dispatch**: The runtime adapter launches the elected AI runtime process via `subprocess.Popen` (appending `--resume <session_id>` for turn continuation).
-4. **Server-Sent Events (SSE)**: Standard I/O output is parsed into structured SSE events (`token`, `tool_call`, `error`, `done`) and streamed to the client via `/api/chat/stream`.
-5. **Turn Completion**: Session state, duration metrics, and event records are saved to `ARES_HOME/webui/sessions/`.
+### Parallel execution
+Independent steps run concurrently. Dependent steps run sequentially. Concurrency limits are configurable.
 
----
+## Guard and verification
 
-## 5. Architecture Decisions
+ARES enforces a hard boundary between *the model proposes* and *the system acts*:
 
-These decisions replace the retired ADR directory. They are part of the
-canonical architecture and should be changed only through an intentional
-architecture review.
+1. **Trust Engine** — classifies data sensitivity (public/personal/private/sensitive/secret), gates provider eligibility, enforces local-only mode
+2. **Evaluator** — checks worker output against expectations before presenting to user (6 checks: completeness, consistency, safety, accuracy, format, policy)
+3. **Approval gates** — shell commands, file deletion, external API calls, spending above threshold, sending sensitive data all require explicit user approval
+4. **Response Composer** — assembles verified results into one coherent answer with provenance
 
-### One identity coordinates many workers
+### Data classification
 
-ARES owns the user-facing SI identity, product sessions, plans, permissions,
-artifacts, and verification. It may decompose a request and delegate bounded
-steps to multiple external workers, including parallel steps when they are
-independent. The Agent surface keeps this interaction coherent; Control Center
-exposes detailed live execution when the user needs it.
+| Class | Who can see | Rule |
+|-------|------------|------|
+| Public | Any worker | Include freely |
+| Personal | Approved providers | Include with disclosure tracking |
+| Private | Local workers only | Redact from cloud briefings |
+| Sensitive | Explicit approval per task | Redact by default |
+| Secret | Never leaves device | Never include in any briefing |
 
-Workers never become competing product identities. Each delegated step retains
-its worker/model/tool provenance, while ARES preserves the relationship between
-the original request, specialist sessions, artifacts, and combined result. See
-`docs/features/multi-agent-orchestration.md` for the product contract and
-implementation status.
+## Memory and state
 
-### Workers execute out of process
+### Two stores, one direction
 
-ARES supports independently versioned workers such as Jaeger AI, Hermes,
-Claude Code, Codex, Ollama, and cloud providers. ARES invokes workers through
-subprocess or network adapters; it does not import or absorb their execution
-loops. A worker crash, dependency conflict, or memory failure must not take
-down the controller.
+```
+ARES_HOME/          ARES-owned state (read + WRITE)
+Worker stores       Worker-owned state (read ONLY)
+```
 
-Conversation continuation is performed through the worker's supported resume
-contract. ARES sends the new turn and asks the worker to resume its own session
-instead of rewriting or replaying the worker's private state. A warm-worker
-daemon may be introduced later if measured startup latency justifies it, but
-the process and ownership boundary remains.
+ARES never writes another app's store. When a worker session needs a new turn, ARES asks the worker to write it. This is a deliberate boundary.
 
-### JaegerAI is an adapter-backed product dependency
+### Memory types
 
-JaegerAI is the primary local Companion runtime when the user elects
-`jaeger_local`, but it remains a separate application and repository. ARES
-discovers a validated JaegerAI product root and communicates through bridge
-protocol v1 (or an explicitly configured gateway). It does not import JaegerAI
-into the controller environment or reproduce JaegerAI's schemas.
+| Type | What | Lifecycle |
+|------|------|-----------|
+| Episodic | Conversations, events, actions | Permanent, searchable |
+| Semantic | Facts, preferences, decisions | Permanent, searchable |
+| Working | Current task state, active plan | Cleared when task completes |
+| Scratchpad | Worker temporary state | Cleared when worker task completes |
 
-ARES may project its user-facing Companion name into JaegerAI by calling
-JaegerAI's validated `save_identity` command. Character changes likewise use
-`select_character` and `make_default`. This is not a direct external-store
-write: JaegerAI validates and persists its own state, and ARES reads the result
-back through the adapter. The normalized client contract is `/api/companion`.
+### Context assembly
 
-### ARES and workers own separate stores
+Workers never see the full journal. The context compiler assembles a filtered, token-budgeted briefing per task: SI identity, relevant user context, project context, recent conversation, relevant memories, constraints, privacy policy, available tools, and output requirements.
 
-ARES reads and writes its own journal, tasks, artifacts, approvals, and profile
-state. Each worker owns its native sessions, scratchpads, model state, and
-configuration. ARES may import worker history using read-only access, but it
-never writes directly to another application's database.
+## System boundaries
 
-This boundary preserves worker portability, prevents database and WAL
-contention, and keeps provenance intact. Continuing a worker session means
-asking that worker to append the turn through its adapter.
+### What ARES owns
 
-### Read-only describes continuation capability
+| Subsystem | Owns |
+|-----------|------|
+| Identity | Name, persona, behavioral principles |
+| Memory | Journal, user model, preferences, decisions |
+| Context | What to send, what to redact, what budget |
+| Trust | Data classification, provider eligibility, approval gates |
+| Planning | Task decomposition, step ordering, dependencies |
+| Routing | Which worker for which task |
+| Verification | Checking worker output against expectations |
+| Response | Final voice, uncertainty framing, activity summary |
+| Policy | What requires approval, what data can leave the device |
 
-The `read_only` session flag means ARES has no safe append or resume path for
-that session. It does not merely mean the session originated outside ARES.
-Imported sessions remain continuable when their worker exposes a supported
-resume operation; transcript-only imports remain read-only and reject mutation.
+### What workers own
 
-### Clients consume ARES contracts
+Workers own execution. They do NOT own identity, memory, policy, or the user relationship.
 
-Framework-native payloads are normalized at the controller or client boundary.
-React components and native surfaces consume ARES-owned contracts and must not
-branch on framework display strings. Backend IDs are machine identifiers;
-labels are presentation metadata. Compatibility aliases are normalized before
-they enter application state.
+| Worker | Owns |
+|--------|------|
+| Hermes | Tool execution, terminal ops, file ops, agent loops |
+| Claude Code | Code generation, reasoning |
+| Codex | Code generation, general reasoning |
+| Ollama | Local inference, privacy-safe computation |
+| Jaeger AI | Local companion, macOS control, voice |
 
-For the Web UI, contracts live in `apps/web/src/shared/contracts.ts` and raw
-payload translation lives in `apps/web/src/shared/translators.ts`.
+### Boundary enforcement
 
-### Chat streaming uses Server-Sent Events
+1. Workers cannot directly mutate permanent memory — only ARES writes to the journal
+2. Workers cannot bypass trust policy — the trust engine gates all data
+3. Workers cannot access secrets — API keys are injected by ARES, never in briefings
+4. Workers cannot initiate actions — ARES dispatches all tasks
+5. Worker outputs are untrusted input — the evaluator checks all results
 
-Chat is predominantly server-to-client streaming, so SSE remains the canonical
-transport for tokens, tool activity, errors, and completion. Starting,
-cancelling, approving, and clarifying are ordinary authenticated HTTP requests.
-This keeps the protocol compatible with browsers, WKWebView, reverse proxies,
-and trusted private networking without a separate WebSocket authentication
-path.
+## Worker adapter contract
 
-WebSockets may support genuinely bidirectional features such as live audio,
-but they do not replace the canonical chat stream without a new product and
-architecture decision.
+All workers are accessed through a common interface:
 
----
+```python
+class ReasoningProvider(Protocol):
+    worker_id: str
+    provider: str
+    capabilities: list[str]
+    data_location: str      # "local" | "cloud"
+    privacy_class: str      # "local_only" | "external_provider" | "approved_provider"
 
-## 6. Runtime Invariants
+    async def generate(self, briefing: ContextBriefing, message: str) -> WorkerResult: ...
+    async def check_availability(self) -> AvailabilityStatus: ...
+```
 
-- ARES never silently selects a worker on a new profile.
-- Profile readiness and execution readiness are reported separately.
-- Backend selection, model selection, and tool selection remain distinct.
-- New backend state uses canonical IDs; legacy IDs are accepted only at input
-  migration boundaries.
-- Every completed turn retains worker and model provenance when available.
-- External stores are opened read-only and never acquire ARES-created journals
-  or lock files.
-- Supported worker commands may mutate worker-owned configuration, but only
-  through that worker's versioned adapter—not through direct file/database
-  writes.
+### ContextBriefing (what ARES sends to workers)
 
-## 7. External Agent Source Boundary
+Filtered, budgeted context per task: SI identity, user context, project context, recent conversation, relevant memories, constraints, privacy policy, available tools, output requirements, and a manifest of what was included/excluded/redacted.
 
-The controller currently has compatibility paths that can discover and import
-parts of an external Ares Agent checkout. The dependency audit in
-`services/controller/scripts/audit_agent_source_dependencies.py` tracks the
-remaining startup installs, runtime imports, state access, provider access, and
-container source mounts for issue #2491.
+### WorkerResult (what workers return)
 
-The target contract is a versioned HTTP/client boundary. Agent-owned sessions,
-credentials, provider routing, and execution stay behind agent APIs; ARES keeps
-presentation, request validation, and its own durable state. Pure schemas and
-constants may move into a small versioned client package. The existing source mounts can be removed only after every audited runtime dependency has an API or
-client replacement and the migration tests prove equivalent behavior.
+Structured result: content, artifacts, tool calls, confidence, cost report, metadata, and verification evidence.
 
-## 8. Canonical Session Resolution
+## Runtime invariants
 
-Every URL route, query parameter, `localStorage` restore value, and sidebar
-selection must resolve to one `canonical_visible_session_id` before a
-conversation is rendered. Compression lineage is metadata, not an alternate
-navigation system: `pre_compression_snapshot`, `continuation_session_id`, and
-`parent_session_id` are resolved through the same helper.
+- ARES never silently selects a worker on a new profile
+- Profile readiness and execution readiness are reported separately
+- Backend selection, model selection, and tool selection remain distinct
+- Every completed turn retains worker and model provenance
+- External stores are opened read-only
+- Worker failure degrades a capability; it must not erase the ARES session
 
-The two required entry points are a direct session open and browser boot restore.
-Both produce the canonical visible session, the continuation target,
-and the parent lineage without allowing stale browser state to override an
-explicit route.
+## Extensions
+
+ARES WebUI supports an opt-in extension surface for self-hosted installs. Extensions can serve static assets and inject same-origin CSS/JS. They execute with full WebUI session authority — only enable extensions you wrote yourself or from sources you trust.
+
+## Contracts
+
+For contract-affecting changes, see `services/controller/docs/CONTRACTS.md` for the full contract index, RFCs, and review expectations. Key contracts:
+
+- Session resolution: `services/controller/docs/rfcs/canonical-session-resolution.md`
+- Run adapter: `services/controller/docs/rfcs/ares-run-adapter-contract.md`
+- Agent source boundary: `services/controller/docs/rfcs/agent-source-boundary.md`
+- Turn journal: `services/controller/docs/rfcs/turn-journal.md`

@@ -1,68 +1,104 @@
-# Developer & Operator Guide
+# ARES Development Guide
 
-| Attribute | Details |
-| :--- | :--- |
-| **Status** | Active Operational Manual |
-| **Audience** | Developers, DevOps Engineers, System Administrators |
-| **Owner** | ARES engineering maintainers |
-| **Last verified** | 2026-08-01 |
-| **Source of truth** | Install scripts, package manifests, workflows, and verification commands |
-
-This guide covers local environment setup, application execution paths, external provider registration, containerized deployments, WSL integration, and troubleshooting procedures.
-
----
-
-## 1. Quick Start & Execution Modes
-
-ARES supports three primary local execution paths:
-
-### Developer Mode (Native macOS Shell)
-Launches the native macOS app shell built with SwiftUI and WKWebView:
-```bash
-swift run ARES
-```
-
-### Standalone Web Mode (Development Server)
-Launches the Python FastAPI controller and React SPA web application:
-```bash
-./start.sh
-# Access the web UI at http://localhost:8788
-```
-
-Additional native clients are planned, but this repository currently ships the
-macOS and Web paths above. Do not document an untracked client directory as an
-available execution mode.
-
----
-
-## 2. Environment Setup & Installation
-
-### First-Time Local Installation
+## Quick Start
 
 ```bash
 git clone https://github.com/shuwalker/ARES.git
 cd ARES
-
-# Run automated installer
 bash install.sh
 ```
 
-The installer script automatically handles:
-- Detecting or initializing Python virtual environments (`.venv`).
-- Installing required Python dependencies (`requirements.txt`).
-- Configuring active provider adapters (`jaeger_local`, `hermes_local`, or `unassigned`).
+The installer handles:
+- Python virtual environment (`.venv`) and dependencies
+- Provider adapter configuration (`jaeger_local`, `hermes_local`, or `unassigned`)
 
-### Installation Options
-- `--no-start`: Skips auto-launching the web server after installation completes.
-- `--backend <name>`: Elects an initial runtime provider (defaults to `unassigned`).
+**Installer options:**
+- `--no-start` — skip auto-launching after install
+- `--backend <name>` — elect an initial runtime provider
 
----
+### Run
 
-## 3. External AI Runtime Registry
+```bash
+# Web UI
+./start.sh
+# → http://localhost:8788
 
-External AI runtimes (Jaeger AI, Ollama, Hermes Agent, and cloud LLMs) are managed independently. ARES discovers and registers them via `~/.ares/providers.json` (override using `ARES_PROVIDER_REGISTRY_PATH`).
+# Native macOS app
+swift run ARES
+```
 
-### Configuration Schema (`~/.ares/providers.json`)
+## Onboarding
+
+The first time ARES starts, you choose a provider, a workspace, and optionally set a password. The bootstrap supports Linux, macOS, and WSL2.
+
+### Re-running onboarding safely
+
+Do not delete `~/.ares` to see the wizard again. For a clean trial, use an isolated home:
+
+```bash
+mkdir -p ~/ares-onboarding-test
+ARES_HOME=~/ares-onboarding-test/.ares \
+ARES_WEBUI_STATE_DIR=~/ares-onboarding-test/webui \
+ARES_WEBUI_PORT=8789 \
+python3 bootstrap.py
+```
+
+## Docker
+
+### Single-container (recommended)
+
+```bash
+git clone https://github.com/shuwalker/ARES
+cd ARES
+cp .env.docker.example .env
+docker compose up -d
+open http://localhost:8787
+```
+
+### Multi-container
+
+```bash
+cd services/controller
+docker compose -f docker-compose.three-container.yml up -d
+```
+
+### Production security
+
+The production image runs as unprivileged `areswebui` user after init. No `sudo`, no `NOPASSWD` escalation. Init phase runs as root for UID/GID alignment, then drops privileges.
+
+### Container networking
+
+Inside a container, `localhost` means that container. Use `host.docker.internal` with `--add-host host.docker.internal:host-gateway` for host services. Avoid `sudo docker compose up -d` without explicit `ARES_HOME` — `sudo` changes `$HOME` to `/root`.
+
+## WSL / Linux autostart
+
+```ini
+[Unit]
+Description=ARES Controller
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/user/ARES/services/controller
+ExecStart=/home/user/ARES/services/controller/.venv/bin/python server.py
+Restart=always
+Environment=ARES_HOME=/home/user/.ares
+
+[Install]
+WantedBy=default.target
+```
+
+## Process supervision
+
+Use launchd (macOS), systemd (Linux), or supervisord to keep ARES running. Pass `--foreground` to `bootstrap.py`:
+
+```bash
+python3 bootstrap.py --foreground
+```
+
+## Provider configuration
+
+External runtimes are registered via `~/.ares/providers.json`:
 
 ```json
 {
@@ -79,114 +115,40 @@ External AI runtimes (Jaeger AI, Ollama, Hermes Agent, and cloud LLMs) are manag
 }
 ```
 
-> [!NOTE]
-> **Provider Registration vs. Election**
-> Registering a provider makes it available for selection. A provider becomes active only when explicitly elected via the `/api/ares/providers` endpoint or the UI settings panel.
+Registering makes a provider available. It becomes active only when elected via the API or UI.
 
----
+## Workspace Git
 
-## 4. Container Deployment (Docker)
+Workspace Git controls let the browser inspect Git state for the active session workspace. Configured in Settings → System.
 
-Docker configurations are located under `services/controller/`:
+## Troubleshooting
 
-```bash
-cd services/controller
+### Controller won't start
+Verify Python 3.10+ is active and dependencies are installed in `.venv`.
 
-# Single-container build
-docker build -t ares-controller .
-docker run -d -p 8788:8788 -v ares_data:/root/.ares ares-controller
+### Database lock warnings
+Check file permissions on `ARES_HOME/webui_state/` and ensure no orphaned instances hold WAL file locks.
 
-# Multi-container orchestration
-docker compose -f docker-compose.three-container.yml up -d
-```
+### Runtime disconnected
+Check network connectivity to the provider endpoint and confirm environment key variables match `credential_env`.
 
-### Production image security model
-
-ARES production Docker containers do not grant passwordless sudo or escalate privileges. Container execution starts under an unprivileged `areswebui` user in single-tenant deployments, dropping root permissions prior to launching the application server.
-
-### Container Networking & Host API URLs
-
-Inside a container, `localhost` means *that container*. If an API base URL set to localhost fails from Docker, configure the container network host bridge:
-- Use `host.docker.internal` or `host.containers.internal` with `--add-host host.docker.internal:host-gateway`.
-- Avoid running `sudo docker compose up -d` without explicit `ARES_HOME=/home/youruser/.ares` export, as `sudo` often changes `$HOME` to `/root`, causing `${ARES_HOME:-${HOME}/.ares}` becomes `/root/.ares` instead of your real user home. Validate configuration using `docker compose config`.
-
-### Related issues
-Refer to issues #3012 and #3006 for Docker networking and permission hardening details.
-
-
----
-
-## 5. WSL & Linux Autostart Configuration
-
-For Linux/WSL environments, system autostart can be configured using a systemd service unit:
-
-```ini
-[Unit]
-Description=ARES Assistant Controller Service
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=/home/user/ARES/services/controller
-ExecStart=/home/user/ARES/services/controller/.venv/bin/python server.py
-Restart=always
-Environment=ARES_HOME=/home/user/.ares
-
-[Install]
-WantedBy=default.target
-```
-
----
-
-## 6. Troubleshooting & Diagnostics
-
-- **Controller Server Startup Failure**: Verify that Python 3.10+ is active and dependencies are installed in `.venv`.
-- **Database Lock Warnings**: Check file permissions on `{ARES_HOME}/webui_state/` and ensure no orphaned instances hold WAL file locks.
-- **Runtime Disconnected**: Inspect network connectivity to the provider endpoint and confirm environment key variables match `credential_env`.
-
-### `AIAgent not available`
-
-This error means the Python process serving ARES cannot import the external
-Ares Agent package. First confirm the checkout and any symlink resolve to a real
-agent module:
+### "AIAgent not available"
+The Python process serving ARES cannot import the external agent package. Fix:
 
 ```bash
 ls -la /path/to/ares-agent
 readlink /path/to/ares-agent
 ls /path/to/ares-agent/agent/__init__.py
-```
-
-Then confirm `ARES_WEBUI_AGENT_DIR` and the Python interpreter shown in the
-controller diagnostic refer to the intended installation. The usual repair is
-to install the agent into that same interpreter in editable mode:
-
-```bash
 cd /path/to/ares-agent
 pip install -e .
 ```
 
-Restart ARES and verify the import directly with that interpreter. Do not copy
-agent sources into the controller or silently fall back to another runtime.
+Restart ARES. Do not copy agent sources into the controller.
 
----
+### Docker home bind mount permissions
+`sudo docker compose up -d` can make `$HOME` expand to `/root/.ares`. Set `ARES_HOME=/home/you/.ares` explicitly.
 
-## 7. Safe Onboarding and Reinstallation
-
-- Detect an existing installation before creating configuration or state.
-- Use isolated state directories for trials and automated verification.
-- Never delete, replace, or migrate a real provider home without explicit
-  operator approval.
-- Never print complete secret-bearing files during diagnosis.
-- Treat Jaeger AI, Hermes, Ollama, and other workers as peer products. ARES may
-  detect them or delegate to their installers, but does not copy their runtime
-  implementation into this repository.
-- New Jaeger configuration uses `ARES_JAEGER_HOME`,
-  `ARES_JAEGER_GATEWAY_URL`, and `ARES_JAEGER_GATEWAY_KEY`. Retired JROS names
-  are compatibility inputs only and must not be emitted by new launchers.
-
-## 8. Verification
-
-Run checks from the repository they validate:
+## Verification
 
 ```bash
 cd apps/web
@@ -201,24 +163,16 @@ cd services/controller
 ./scripts/test.sh
 ```
 
-The controller test script owns its supported Python environment. Use isolated
-ports and state, and confirm the process serving the port belongs to ARES—not a
-legacy Hermes Web UI checkout—before interpreting browser results.
+## Safe practices
 
-## 9. Contract Changes
+- Detect existing installations before creating configuration
+- Use isolated state directories for trials
+- Never delete or migrate a real provider home without explicit operator approval
+- Never print complete secret-bearing files during diagnosis
+- Treat Jaeger AI, Hermes, Ollama, and other workers as peer products — ARES may detect them but does not copy their runtime implementation
 
-For a contract-affecting PR, include `Contract Routing` and `Contract Change`
-in the PR body. The contract tests and corresponding docs must move together; tests
-must not silently redefine behavior without changing its public contract.
+## Contributors
 
-This static coverage is advisory. It is not an automated policy gate and does not enforce PR-body content or replace review. A future release-time
-check may surface missing declarations, and each release batch should list its
-contract-affecting changes explicitly.
+Matthew Jenkins (shuwalker) · Jenkins Robotics
 
-### Documentation impact
-
-Start work at [`AGENTS.md`](../AGENTS.md) and route through
-[`docs/README.md`](README.md). A change must update its owning document when it
-alters product behavior, state ownership, a setting, an API, a trust boundary,
-or an accepted decision. Feature specifications must state what is implemented
-and what remains intended.
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for contribution guidelines.
