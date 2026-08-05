@@ -2,7 +2,6 @@ import {
   FolderKanban,
   Kanban,
   Layers,
-  Sparkles,
   SquareTerminal,
   Briefcase,
   ListTodo,
@@ -12,69 +11,63 @@ import {
 import { SurfaceLinkGrid, SurfaceNote, SurfaceShell } from "@/components/surfaces/SurfaceShell";
 
 /**
- * Workshop surface — create, build, engineer.
+ * Engineering surface — design, build, test, and operate technical work.
  * Primary question: what are we building?
  */
 export function WorkshopPage() {
   return (
     <SurfaceShell
-      title="Workshop"
-      description="Where real work happens — files, code, terminal, CAD, analysis, and artifacts. Output-oriented."
+      title="Engineering"
+      description="Design, build, test, and manage technical systems with your Agent."
     >
       <SurfaceNote>
-        Workspace-scoped: pick a root folder, then create. The Companion may open projects here from
-        intent (“open my CAD project”) once routing is mature. CAD/sim adapters arrive as packs —
-        files and terminal are first-class now.
+        Choose a workspace and work directly, or delegate through Agent. Code, files,
+        projects, and verification are available now; CAD and simulation connect here as
+        engineering integrations mature.
       </SurfaceNote>
 
       <SurfaceLinkGrid
         links={[
           {
             to: "/workspace",
-            label: "Workspace files",
-            description: "Browse and work in the rooted project tree.",
+            label: "Files & code",
+            description: "Browse and edit the selected engineering workspace.",
             icon: FolderKanban,
           },
           {
             to: "/terminal",
             label: "Terminal",
-            description: "Hands on the host — builds, scripts, tools.",
+            description: "Run builds, tests, scripts, and engineering tools.",
             icon: SquareTerminal,
           },
           {
             to: "/projects",
             label: "Projects",
-            description: "Named projects and status.",
+            description: "Organize technical efforts, objectives, and status.",
             icon: Briefcase,
           },
           {
             to: "/board",
             label: "Board",
-            description: "Kanban-style work board for active efforts.",
+            description: "Plan and track active engineering work.",
             icon: Kanban,
           },
           {
             to: "/canvas",
             label: "Canvas",
-            description: "Freeform whiteboard for planning and design.",
+            description: "Explore diagrams, spatial designs, and visual concepts.",
             icon: Layers,
           },
           {
             to: "/issues",
             label: "Issues",
-            description: "Tracked problems and tasks.",
+            description: "Track defects, requirements, and technical tasks.",
             icon: ListTodo,
           },
           {
-            to: "/hatchery",
-            label: "Hatchery",
-            description: "Experiments and incubating ideas.",
-            icon: Sparkles,
-          },
-          {
             to: "/chat",
-            label: "Chat while building",
-            description: "Worker console with tools — pair-program mode.",
+            label: "Open Agent",
+            description: "Discuss, delegate, and review engineering work.",
             icon: FileCode,
           },
         ]}

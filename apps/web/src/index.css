@@ -1,3 +1,4 @@
+/* v2 - mobile toolbar fix */
 @import "tailwindcss";
 @import "./styles/island-backdrop.css";
 
@@ -494,74 +495,7 @@
   }
 }
 
-/* ── Settings hub (Hermes-aligned section shell) ── */
-.settings-hub .settings-layout {
-  display: grid;
-  gap: 1rem;
-  align-items: start;
-}
-
-@media (min-width: 900px) {
-  .settings-hub .settings-layout {
-    grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
-    gap: 1.5rem;
-  }
-}
-
-.settings-hub .settings-side {
-  position: sticky;
-  top: 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) * 1.2);
-  background: var(--card);
-  padding: 0.75rem;
-}
-
-.settings-hub .settings-side-nav {
-  display: flex;
-  flex-direction: row;
-  gap: 0.25rem;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 0.15rem;
-}
-
-@media (min-width: 900px) {
-  .settings-hub .settings-side-nav {
-    flex-direction: column;
-    overflow: visible;
-  }
-}
-
-.settings-hub .settings-side-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 2.5rem;
-  flex-shrink: 0;
-  border-radius: 0.5rem;
-  border: 1px solid transparent;
-  padding: 0.45rem 0.7rem;
-  font-size: 0.8125rem;
-  color: var(--muted-foreground);
-  background: transparent;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.settings-hub .settings-side-item:hover {
-  background: color-mix(in oklab, var(--muted) 70%, transparent);
-  color: var(--foreground);
-}
-
-.settings-hub .settings-side-item.is-active {
-  background: color-mix(in oklab, var(--primary) 12%, transparent);
-  border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
-  color: var(--foreground);
-  font-weight: 600;
-}
-
+/* ── Settings hub ── */
 .settings-hub .settings-main {
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) * 1.2);
@@ -630,4 +564,32 @@ html[data-skin="neon-soft"] {
 html[data-skin="neon-paint"] {
   --primary: oklch(0.78 0.2 145);
   --ring: oklch(0.78 0.2 145);
+}
+
+
+
+/* === ARES Mobile Toolbar Simplification === */
+/* Hide advanced chips on iPhone - keep Attach, Dictate, Send visible */
+@media (max-width: 640px) {
+  /* Hide by targeting button titles and wrapper divs */
+  .conversation-toolbar button[title*="Character"],
+  .conversation-toolbar button[title*="workspace"],
+  .conversation-toolbar button[title*="Model"],
+  .conversation-toolbar button[title*="Reasoning"],
+  .conversation-toolbar button[title*="YOLO"],
+  .conversation-toolbar button[title*="Toolsets"],
+  .conversation-toolbar div[style*="message count"],
+  .conversation-toolbar span[style*="ellipsis"][style*="flexShrink"],
+  .conversation-toolbar [style*="maxWidth"][style*="flexShrink"] {
+    display: none !important;
+  }
+  
+  /* Hide divider */
+  .conversation-toolbar div[style*="H.border2"] {
+    display: none !important;
+  }
+  
+  .conversation-toolbar {
+    gap: 0.25rem !important;
+  }
 }

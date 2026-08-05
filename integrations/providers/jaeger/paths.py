@@ -1,14 +1,14 @@
-"""Shared JROS/JAEGER path resolution for ARES WebUI.
+"""Shared JaegerAI dependency resolution for ARES.
 
-ARES treats JROS as a peer runtime. This module centralizes every filesystem
-path ARES needs for that integration so WebUI code does not grow competing
-ideas of where Jaeger/JROS lives.
+ARES talks to JaegerAI through its public launcher/bridge contract. This module
+centralizes dependency discovery so production installs and sibling development
+checkouts use the same validated boundary.
 
 Conventions:
-- ARES_JAEGER_HOME: ARES-specific installed Jaeger/JROS home override.
-- JAEGER_HOME: JROS-wide installed Jaeger/JROS home override.
-- ARES_JROS_DIR: optional source checkout for source-tree features only.
-- ARES_JROS_CONFIG_PATH: explicit instance config.yaml override.
+- ARES_JAEGER_HOME: ARES-specific JaegerAI product-root override.
+- JAEGER_HOME: JaegerAI's product-root override.
+- ARES_JAEGER_SOURCE_DIR: optional development checkout override.
+- Legacy JROS variables are accepted only as migration inputs.
 - JAEGER_INSTANCE_DIR: explicit instance directory override.
 """
 from __future__ import annotations
@@ -18,12 +18,15 @@ from pathlib import Path
 
 ARES_JAEGER_HOME_ENV = "ARES_JAEGER_HOME"
 JAEGER_HOME_ENV = "JAEGER_HOME"
-ARES_JROS_DIR_ENV = "ARES_JROS_DIR"
-ARES_JROS_CONFIG_PATH_ENV = "ARES_JROS_CONFIG_PATH"
+ARES_JAEGER_SOURCE_DIR_ENV = "ARES_JAEGER_SOURCE_DIR"
+ARES_JAEGER_CONFIG_PATH_ENV = "ARES_JAEGER_CONFIG_PATH"
+LEGACY_JROS_DIR_ENV = "ARES_JROS_DIR"
+LEGACY_JROS_CONFIG_PATH_ENV = "ARES_JROS_CONFIG_PATH"
 JAEGER_INSTANCE_DIR_ENV = "JAEGER_INSTANCE_DIR"
 ARES_CHARACTER_DIR_ENV = "ARES_CHARACTER_DIR"
 ARES_PERSONA_DIR_ENV = "ARES_PERSONA_DIR"
-ARES_JROS_INSTANCE_ENV = "ARES_JROS_INSTANCE"
+ARES_JAEGER_INSTANCE_ENV = "ARES_JAEGER_INSTANCE"
+LEGACY_JROS_INSTANCE_ENV = "ARES_JROS_INSTANCE"
 
 
 def expand_path(value: str | os.PathLike[str]) -> Path:
@@ -31,15 +34,41 @@ def expand_path(value: str | os.PathLike[str]) -> Path:
     return Path(os.path.expandvars(str(value))).expanduser().resolve()
 
 
-def jaeger_home() -> Path:
-    """Return the installed Jaeger/JROS home.
+def is_jaeger_ai_root(path: str | os.PathLike[str]) -> bool:
+    """Return whether ``path`` is a current JaegerAI product checkout/install.
 
-    This is the runtime install that contains the ``jaeger`` launcher and the
-    installed ``jaeger_os`` tree. It is not necessarily a developer source
-    checkout.
+    A launcher or a ``jaeger_os`` package alone is not sufficient: legacy JROS
+    used both and must never be mistaken for JaegerAI. The product package is
+    the stable capability marker shared by source and installed layouts.
     """
-    raw = os.environ.get(ARES_JAEGER_HOME_ENV) or os.environ.get(JAEGER_HOME_ENV) or "~/jaeger"
-    return expand_path(raw)
+    try:
+        root = expand_path(path)
+        launcher = root / "jaeger"
+        return (
+            (root / "jaeger_ai").is_dir()
+            and launcher.is_file()
+            and os.access(launcher, os.X_OK)
+        )
+    except OSError:
+        return False
+
+
+def jaeger_home() -> Path:
+    """Return the selected JaegerAI product root.
+
+    Explicit configuration wins. Otherwise the standard ``~/jaeger`` install
+    wins when it is current JaegerAI; a sibling development checkout is the
+    fallback. Returning the conventional install path when neither exists lets
+    status surfaces explain the missing dependency without inventing one.
+    """
+    raw = (os.environ.get(ARES_JAEGER_HOME_ENV) or os.environ.get(JAEGER_HOME_ENV) or "").strip()
+    if raw:
+        return expand_path(raw)
+    installed = expand_path("~/jaeger")
+    if is_jaeger_ai_root(installed):
+        return installed
+    source = discover_jaeger_ai_source_root()
+    return source if source is not None else installed
 
 
 def jaeger_launcher() -> Path:
@@ -47,28 +76,23 @@ def jaeger_launcher() -> Path:
     return jaeger_home() / "jaeger"
 
 
-def discover_jros_source_root() -> Path | None:
-    """Best-effort discovery for a local JaegerAI/JROS source checkout.
-
-    ``ARES_JROS_DIR`` remains the explicit override. The fallback candidates
-    cover the common developer layouts used by ARES itself: sibling checkouts
-    under the same GitHub folder, ``~/GitHub/JaegerAI``, ``~/JaegerAI``, and
-    the legacy ``~/GitHub/JROS`` / ``~/JROS`` paths.
-    """
-    override = os.environ.get(ARES_JROS_DIR_ENV, "").strip()
-    candidates: list[Path] = []
+def discover_jaeger_ai_source_root() -> Path | None:
+    """Discover a current JaegerAI checkout without accepting legacy JROS."""
+    override = (
+        os.environ.get(ARES_JAEGER_SOURCE_DIR_ENV)
+        or os.environ.get(LEGACY_JROS_DIR_ENV)
+        or ""
+    ).strip()
     if override:
-        candidates.append(expand_path(override))
+        root = expand_path(override)
+        return root if is_jaeger_ai_root(root) else None
 
-    ares_root = Path(__file__).resolve().parents[2]
-    candidates.extend([
-        ares_root.parent / "JaegerAI",
+    repository_root = Path(__file__).resolve().parents[3]
+    candidates = [
+        repository_root.parent / "JaegerAI",
         Path("~/GitHub/JaegerAI").expanduser(),
         Path("~/JaegerAI").expanduser(),
-        ares_root.parent / "JROS",
-        Path("~/GitHub/JROS").expanduser(),
-        Path("~/JROS").expanduser(),
-    ])
+    ]
 
     seen: set[Path] = set()
     for candidate in candidates:
@@ -79,13 +103,18 @@ def discover_jros_source_root() -> Path | None:
         if root in seen:
             continue
         seen.add(root)
-        if (root / "jaeger_os").is_dir() or (root / "jaeger_ai").is_dir():
+        if is_jaeger_ai_root(root):
             return root
     return None
 
 
+def discover_jros_source_root() -> Path | None:
+    """Legacy callable name; results are restricted to current JaegerAI."""
+    return discover_jaeger_ai_source_root()
+
+
 def jros_source_root() -> Path:
-    """Return the optional JROS source checkout root.
+    """Compatibility callable returning the selected JaegerAI source root.
 
     Source-checkout access is only needed for source-tree features such as raw
     character library browsing. Runtime chat uses ``jaeger bridge`` instead.
@@ -93,23 +122,23 @@ def jros_source_root() -> Path:
     root = discover_jros_source_root()
     if root is None:
         raise RuntimeError(
-            "ARES_JROS_DIR is not set. Point it at your JROS source checkout "
-            "only if you want source-tree features such as the character library. "
-            "JROS chat uses the installed bridge resolved from ARES_JAEGER_HOME, "
+            "No JaegerAI development checkout was found. Set ARES_JAEGER_SOURCE_DIR "
+            "only when using a nonstandard checkout. Chat uses the bridge resolved "
+            "from ARES_JAEGER_HOME, "
             "JAEGER_HOME, or the standard installer path."
         )
     return root
 
 
 def jros_install_tree() -> Path:
-    """Return the installed ``jaeger_os`` tree under the Jaeger/JROS home."""
-    return jaeger_home() / "jaeger_os"
+    """Legacy callable returning the current JaegerAI package tree."""
+    return jaeger_home() / "jaeger_ai"
 
 
 def character_dir() -> Path:
-    """Return the character/v1 directory.
+    """Return JaegerAI's character library directory.
 
-    ``ARES_CHARACTER_DIR`` wins. Otherwise use the installed JROS tree first,
+    ``ARES_CHARACTER_DIR`` wins. Otherwise use the selected JaegerAI tree first,
     falling back to a source checkout only when the install tree is absent.
     """
     explicit = os.environ.get(ARES_CHARACTER_DIR_ENV, "").strip()
@@ -120,7 +149,7 @@ def character_dir() -> Path:
     if installed.exists():
         return installed
 
-    return jros_source_root() / "jaeger_os" / "personality" / "characters"
+    return jros_source_root() / "jaeger_ai" / "personality" / "characters"
 
 
 def legacy_persona_dir() -> Path:
@@ -133,7 +162,7 @@ def legacy_persona_dir() -> Path:
     if installed.exists():
         return installed
 
-    return jros_source_root() / "jaeger_os" / "agent" / "personas"
+    return jros_source_root() / "jaeger_ai" / "agent" / "personas"
 
 
 def _read_first_existing_text(paths: list[Path]) -> str | None:
@@ -173,7 +202,11 @@ def jros_instance_name() -> str | None:
     emit a ready frame from the implicit default while the first real turn still
     stalls. The explicit instance argument is the verified working contract.
     """
-    explicit = os.environ.get(ARES_JROS_INSTANCE_ENV, "").strip()
+    explicit = (
+        os.environ.get(ARES_JAEGER_INSTANCE_ENV)
+        or os.environ.get(LEGACY_JROS_INSTANCE_ENV)
+        or ""
+    ).strip()
     if explicit:
         return explicit
     native = os.environ.get("JAEGER_INSTANCE_NAME", "").strip()
@@ -184,7 +217,11 @@ def jros_instance_name() -> str | None:
 
 def jros_config_path() -> Path:
     """Resolve the most likely JROS instance config path without writing it."""
-    explicit = os.getenv(ARES_JROS_CONFIG_PATH_ENV, "").strip()
+    explicit = (
+        os.getenv(ARES_JAEGER_CONFIG_PATH_ENV)
+        or os.getenv(LEGACY_JROS_CONFIG_PATH_ENV)
+        or ""
+    ).strip()
     if explicit:
         return expand_path(explicit)
 

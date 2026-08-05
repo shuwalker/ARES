@@ -1,16 +1,13 @@
 import {
   ArrowRight,
   CalendarClock,
-  FolderKanban,
+  ClipboardList,
   Heart,
   Inbox,
   Library,
   MessageCircle,
-  Shield,
-  Sparkles,
-  SquareTerminal,
+  Target,
   UserCheck,
-  Wrench,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -21,9 +18,7 @@ import { useAres } from "@/shared/ares-context";
 import { useLocalProfile } from "@/shared/local-profile";
 
 /**
- * Companion surface — the primary SI front door.
- * Top Action Matrix for fast jump to Developer Chat, Workspace Files, Terminal,
- * Kanban, Schedules, Approvals, System Status, and Jaeger AI Setup.
+ * Life environment — daily guidance, personal context, and administration.
  */
 export function CompanionPage() {
   const { profile } = useLocalProfile();
@@ -38,79 +33,79 @@ export function CompanionPage() {
 
   const quickActionMatrix = [
     {
-      to: "/chat",
-      label: "Developer Chat",
-      subtitle: "Direct worker console (Hermes, Claude, Ollama, JROS)",
-      icon: MessageCircle,
-      badge: "Console",
+      to: "/today",
+      label: "Now",
+      subtitle: "Today’s commitments, plan, and active work",
+      icon: CalendarClock,
+      badge: "Today",
       color: "border-primary/40 bg-primary/10 text-primary",
     },
     {
-      to: "/workspace",
-      label: "Workspace Files",
-      subtitle: "Explore repo, files, and project context",
-      icon: FolderKanban,
-      badge: "Files",
+      to: "/self",
+      label: "Journal & Areas",
+      subtitle: "Personal context and ongoing areas of life",
+      icon: Heart,
+      badge: "Personal",
       color: "border-blue-500/30 bg-blue-500/10 text-blue-400",
     },
     {
-      to: "/terminal",
-      label: "Terminal",
-      subtitle: "Interactive shell & task execution",
-      icon: SquareTerminal,
-      badge: "Shell",
+      to: "/goals",
+      label: "Goals",
+      subtitle: "Long-term outcomes and direction",
+      icon: Target,
+      badge: "Focus",
       color: "border-amber-500/30 bg-amber-500/10 text-amber-400",
     },
     {
-      to: "/workshop",
-      label: "Workshop & Kanban",
-      subtitle: "SOP graph, task boards, and build pipeline",
-      icon: Wrench,
-      badge: "Lab",
+      to: "/cases",
+      label: "Life Admin",
+      subtitle: "Important personal cases, deadlines, and paperwork",
+      icon: ClipboardList,
+      badge: "Admin",
       color: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
     },
     {
       to: "/schedules",
-      label: "Schedules",
-      subtitle: "Recurring cron jobs, timers, background tasks",
+      label: "Automations",
+      subtitle: "Recurring reminders and background assistance",
       icon: CalendarClock,
       badge: "Automate",
       color: "border-purple-500/30 bg-purple-500/10 text-purple-400",
     },
     {
       to: "/inbox",
-      label: "Approvals & Inbox",
+      label: "Approvals",
       subtitle: "Pending worker decisions and notifications",
       icon: Inbox,
       badge: "Decisions",
       color: "border-rose-500/30 bg-rose-500/10 text-rose-400",
     },
     {
-      to: "/activation",
-      label: "Jaeger AI Character Setup",
-      subtitle: "Re-run SI character wizard & LLM selector",
-      icon: UserCheck,
-      badge: "Wizard",
+      to: "/chat",
+      label: "Open Agent",
+      subtitle: "Talk through anything in your life",
+      icon: MessageCircle,
+      badge: "Agent",
       color: "border-cyan-500/30 bg-cyan-500/10 text-cyan-400",
     },
     {
-      to: "/system",
-      label: "System Health",
-      subtitle: "Machine status, backends, permissions",
-      icon: Shield,
-      badge: "Host",
+      to: "/library",
+      label: "Library",
+      subtitle: "Find documents, research, and retained knowledge",
+      icon: Library,
+      badge: "Memory",
       color: "border-zinc-500/30 bg-zinc-500/10 text-zinc-300",
     },
   ];
 
   return (
     <SurfaceShell
-      title={companionName}
-      description="Your Synthetic Intelligence — one continuous identity above workers. Speak intent; it routes the work."
+      title="Life"
+      description={`${companionName} helps ${displayName} manage today, personal context, goals, and important obligations.`}
       action={
         <Button asChild variant="default">
-          <Link to="/chat">
-            Open Projects
+          <Link to="/today">
+            Open Now
             <ArrowRight className="ml-1.5 size-4" />
           </Link>
         </Button>
@@ -120,10 +115,10 @@ export function CompanionPage() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Quick-Access Matrix
+            Life at a glance
           </h2>
           <span className="text-[11px] text-muted-foreground">
-            Instant jump to tools & consoles
+            Personal guidance and context
           </span>
         </div>
 

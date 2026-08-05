@@ -7,8 +7,10 @@ from unittest.mock import MagicMock
 import pytest
 
 # Dynamically add email assistant tools directory to python search path
-repo_root = Path(__file__).resolve().parent.parent.parent
+repo_root = Path(__file__).resolve().parents[3]
+
 sys.path.insert(0, str(repo_root / "tools" / "email_ai_assistant"))
+
 import ares_mail_config
 from mail_assistant import EmailMessage, ThreadNode, ClassificationResult
 

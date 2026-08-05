@@ -23,7 +23,7 @@ final class OnboardingManager: ObservableObject {
     @Published var enableTailscale: Bool = false
     
     @Published var isJaegerInstalled: Bool = false
-    @Published var jaegerStatusText: String = "Checking JaegerAI dependency..."
+    @Published var jaegerStatusText: String = "Checking Jaeger AI dependency..."
     
     private let onboardingCompletedKey = "ares_onboarding_completed"
     
@@ -54,17 +54,17 @@ final class OnboardingManager: ObservableObject {
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-                self.jaegerStatusText = "JaegerAI Core: Local Standalone"
+                self.jaegerStatusText = "Jaeger AI: Local Standalone"
                 return
             }
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
             
             if let available = json["available"] as? Bool, available {
                 self.isJaegerInstalled = true
-                self.jaegerStatusText = "✓ JaegerAI Core Dependency Installed & Connected"
+                self.jaegerStatusText = "✓ Jaeger AI Installed & Connected"
             } else {
                 self.isJaegerInstalled = false
-                self.jaegerStatusText = "JaegerAI Core: Local Standalone"
+                self.jaegerStatusText = "Jaeger AI: Local Standalone"
             }
             
             if let recAwake = json["recommended_model"] as? String, !recAwake.isEmpty {
@@ -74,7 +74,7 @@ final class OnboardingManager: ObservableObject {
                 self.selectedAsleepModel = recAsleep
             }
         } catch {
-            self.jaegerStatusText = "JaegerAI Core: Active"
+            self.jaegerStatusText = "Jaeger AI: Active"
         }
     }
     

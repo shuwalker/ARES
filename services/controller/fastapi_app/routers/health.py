@@ -1,5 +1,7 @@
 """Process and agent health endpoints."""
 
+import os
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -23,6 +25,8 @@ def health(
 ):
     payload, status_code = service.health(deep=deep)
     payload["service"] = "ares-webui"
+    payload["runtime_owner"] = os.getenv("ARES_RUNTIME_OWNER", "standalone") or "standalone"
+    payload["runtime_instance_id"] = os.getenv("ARES_RUNTIME_INSTANCE_ID", "")
     payload["accept_loop"] = {
         "status": "ok",
         "server": "uvicorn",

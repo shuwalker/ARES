@@ -40,7 +40,7 @@ def test_non_jros_backend_keeps_full_model_catalog(monkeypatch):
 def test_jros_backend_shows_only_real_compatible_model_providers(monkeypatch):
     from api import backend_selector, model_catalog
 
-    monkeypatch.setattr("api.config.get_config", lambda: {"ares_backend": "jros_local"})
+    monkeypatch.setattr("api.config.get_config", lambda: {"ares_backend": "jaeger_local"})
     monkeypatch.setattr(backend_selector, "get_active_backend", lambda config: config["ares_backend"])
 
     result = model_catalog.filter_catalog_for_active_backend(_catalog())

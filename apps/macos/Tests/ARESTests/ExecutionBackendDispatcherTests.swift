@@ -85,7 +85,7 @@ final class ExecutionBackendDispatcherTests: XCTestCase {
 
     func testPrefersHealthyBackendForCapability() async throws {
         let hermes = FakeBackend(kind: .hermes, capabilities: [.agentTurn], responseText: "hermes")
-        let jros = FakeBackend(kind: .jros, capabilities: [.agentTurn], responseText: "jros")
+        let jros = FakeBackend(kind: .jaeger, capabilities: [.agentTurn], responseText: "jaeger")
         // Registration order is product policy: hermes first should win the tie.
         let dispatcher = ExecutionBackendDispatcher(backends: [hermes, jros])
 

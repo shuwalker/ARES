@@ -42,7 +42,7 @@ public struct ExecutionBackendRouter: Sendable {
         // If one backend can satisfy the whole request, use it unless the caller
         // explicitly asked for a hybrid plan and a hybrid plan provides a broader
         // capability spread. Registration order is the product policy; this router
-        // does not hardcode Hermes or JROS priority.
+        // does not hardcode Hermes or Jaeger AI priority.
         if !request.preferHybrid,
            let single = usable.first(where: { $0.capabilities.isSuperset(of: required) }) {
             return ExecutionBackendRoute(

@@ -87,8 +87,8 @@ See `docs/product/product-vision.md` for the locked product decisions.
 ## Runtime architecture
 
 Before changing session storage, streaming, worker invocation, or session
-provenance, read [docs/architecture/RUNTIME.md](../docs/architecture/RUNTIME.md)
-and the ADRs in [docs/decisions/](../docs/decisions/).
+provenance, read [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md), including its
+Architecture Decisions section.
 
 Non-negotiable runtime rules:
 

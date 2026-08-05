@@ -219,3 +219,11 @@ class AgenticBackend(ABC):
 
     def get_status(self) -> Dict[str, Any]:
         return {"available": self.is_available(), "label": self.name}
+
+    def inventory(self) -> Dict[str, Any] | None:
+        """Optional: catalog of models/providers this backend can enumerate.
+
+        None means "cannot enumerate" — callers must never treat None as zero
+        models. Shape matches integrations/workers/catalog.finalize_inventory().
+        """
+        return None

@@ -17,6 +17,15 @@ import {
   translateWorkspaceEntries,
   translateWorkspaces,
 } from "@/shared/translators";
+import {
+  nativeSettingsPatch,
+  parseNativeSystemStatus,
+  type NativeSystemSettingsPatch,
+} from "@/shared/system-settings-contract";
+import {
+  parseCompanionStatus,
+  type CompanionUpdate,
+} from "@/shared/companion-contract";
 
 // ── Session search result ─────────────────────────────────────────────
 export interface SessionSearchResult {
@@ -236,6 +245,15 @@ export const aresApi = {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  },
+
+  /**
+   * Live Jaeger AI peer status (not recommendations).
+   * Pass refresh=true to bypass the short provider status cache.
+   */
+  async jaegerStatus(refresh = false) {
+    const q = refresh ? "?refresh=true" : "";
+    return apiFetch<Record<string, unknown>>(`/api/jaeger-onboarding/status${q}`);
   },
 
   async productStateGet<T extends object>(module: string) {
@@ -578,6 +596,35 @@ export const aresApi = {
 
   async systemHealth() {
     return apiFetch<Record<string, unknown>>("/health");
+  },
+
+  async nativeSystemGet() {
+    return parseNativeSystemStatus(await apiFetch("/api/system/native"));
+  },
+
+  async nativeSystemPatch(patch: NativeSystemSettingsPatch) {
+    return parseNativeSystemStatus(await apiFetch("/api/system/native/settings", {
+      method: "PATCH",
+      body: JSON.stringify(nativeSettingsPatch(patch)),
+    }));
+  },
+
+  async nativeSystemAction(action: "restart_server") {
+    return apiFetch<{ accepted: boolean; command_id: string; action: string }>(
+      "/api/system/native/actions",
+      { method: "POST", body: JSON.stringify({ action }) },
+    );
+  },
+
+  async companionGet() {
+    return parseCompanionStatus(await apiFetch("/api/companion"));
+  },
+
+  async companionPatch(patch: CompanionUpdate) {
+    return parseCompanionStatus(await apiFetch("/api/companion", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }));
   },
 
   async restartGateway() {
@@ -970,10 +1017,10 @@ export const aresApi = {
   async connections() {
     return translateConnections(await apiFetch("/api/connections"));
   },
-  async setDefaultBackend(backend: string) {
-    return apiFetch<{ ok: boolean; backend: string }>("/api/ares/backend/set", {
+  async setDefaultBackend(backend: string, sessionId?: string) {
+    return apiFetch<{ ok: boolean; backend: string; scope: string }>("/api/ares/backend/set", {
       method: "POST",
-      body: JSON.stringify({ backend }),
+      body: JSON.stringify(sessionId ? { backend, session_id: sessionId } : { backend }),
     });
   },
   async registryProviders() {

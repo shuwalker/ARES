@@ -163,7 +163,7 @@ def get_assistant_display_name(
         return profile_name
 
     normalized_backend = _normalize_backend(backend)
-    if normalized_backend == "jros_local":
+    if normalized_backend == "jaeger_local":
         persona_name = _persona_display_name(persona_id)
         if persona_name:
             return persona_name
@@ -209,7 +209,7 @@ def build_identity_payload(
     )
     character_name = (
         _persona_display_name(persona_id)
-        if normalized_backend == "jros_local" and _clean_text(persona_id)
+        if normalized_backend == "jaeger_local" and _clean_text(persona_id)
         else None
     )
     return {

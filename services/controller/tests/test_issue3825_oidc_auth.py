@@ -6,6 +6,10 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+
+# OIDC/WebAuthn tests require cryptography; CI installs it conditionally
+pytest.importorskip("cryptography", reason="cryptography package not installed (optional passkey/WebAuthn support)")
+
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, utils
 

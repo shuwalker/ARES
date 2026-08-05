@@ -1,37 +1,38 @@
 """Capability registry for ARES backend-specific UI affordances."""
 from __future__ import annotations
 
+from api.backend_catalog import JAEGER_BACKEND_ID
 from api.backend_selector import VALID_BACKENDS, normalize_backend
 
 
 CAPABILITIES: dict[str, dict[str, bool]] = {
     "cloud_provider_model_settings": {
         "hermes_local": True,
-        "jros_local": False,
+        JAEGER_BACKEND_ID: False,
     },
     "mcp_server_config": {
         "hermes_local": True,
-        "jros_local": False,
+        JAEGER_BACKEND_ID: False,
     },
     "messaging_gateway": {
         "hermes_local": True,
-        "jros_local": False,
+        JAEGER_BACKEND_ID: False,
     },
     "kanban": {
         "hermes_local": True,
-        "jros_local": False,
+        JAEGER_BACKEND_ID: False,
     },
     "delegate_task": {
         "hermes_local": True,
-        "jros_local": False,
+        JAEGER_BACKEND_ID: False,
     },
     "character_persona_editing": {
         "hermes_local": False,
-        "jros_local": True,
+        JAEGER_BACKEND_ID: True,
     },
     "voice_settings": {
         "hermes_local": True,
-        "jros_local": False,
+        JAEGER_BACKEND_ID: False,
     },
 }
 
@@ -54,6 +55,6 @@ def capabilities_for_backend(backend: str) -> dict[str, bool]:
         capability: bool(matrix.get(selected, False))
         for capability, matrix in CAPABILITIES.items()
     }
-    if selected == "jros_local" and _jros_ares_tools_enabled():
+    if selected == JAEGER_BACKEND_ID and _jros_ares_tools_enabled():
         result["kanban"] = True
     return result

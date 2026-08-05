@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 import threading
-from typing import Any
+from typing import Any, Optional, Dict
 
+logger = logging.getLogger(__name__)
 
 _ares_home = Path(os.environ.get("ARES_HOME", "~/.ares")).expanduser()
 _LOCK_DIR = _ares_home / "cron"
@@ -14,6 +16,50 @@ _LOCK_FILE = _LOCK_DIR / ".tick.lock"
 _KNOWN_DELIVERY_PLATFORMS = frozenset({"telegram", "discord", "slack", "feishu"})
 SILENT_MARKER = "[SILENT]"
 _RUN_LOCK = threading.Lock()
+
+
+def resume_paused_plan(plan_id: str, conversation_id: str) -> Optional[Dict[str, Any]]:
+    """Resume a paused plan on heartbeat trigger.
+
+    Returns dispatch result if plan was resumed, None if not found/not paused.
+    """
+    from core.si import orchestrator, planner
+    from core.si.types import PlanStatus, StepStatus
+    from api.dispatch_service import get_dispatch_service
+
+    plan = orchestrator.load_plan(plan_id)
+
+    if not plan:
+        logger.debug("Plan %s not found", plan_id)
+        return None
+
+    # Only resume if paused or running
+    if plan.status not in [PlanStatus.PAUSED, PlanStatus.RUNNING]:
+        logger.debug("Plan %s status %s, skipping resume", plan_id, plan.status)
+        return None
+
+    # Get next pending step
+    next_step = planner.get_next_step(plan)
+    if not next_step:
+        logger.debug("Plan %s has no pending steps", plan_id)
+        return None
+
+    # Dispatch through orchestrator to resume
+    dispatch = get_dispatch_service()
+
+    # Use the step's objective as the message
+    user_message = f"[CONTINUE_PLAN] {next_step.objective}"
+
+    result = dispatch.dispatch_turn(
+        user_message=user_message,
+        conversation_id=conversation_id or plan_id,
+        local_only_mode=False,
+        si_name="Leo",
+        owner_name="System",
+    )
+
+    logger.info("Resumed plan %s, status: %s", plan_id, result.get("status"))
+    return result
 
 
 def run_job(job: dict[str, Any]) -> tuple[bool, str, str, str | None]:

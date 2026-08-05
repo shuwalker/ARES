@@ -74,24 +74,53 @@ def test_gateway_url_resolution_env_config_default(monkeypatch):
     assert jgc.jros_gateway_base_url({"jros_gateway_url": "http://pc.lan:9000"}) == "http://other:8643"
 
 
-def test_jros_repo_root_still_honors_ares_jros_dir_for_characters(monkeypatch, tmp_path):
-    # api.characters now resolves through api.providers.jaeger.paths.character_dir()
-    # instead of its own private _jros_repo_root() helper — this pins the
-    # same ARES_JROS_DIR-wins contract at the shared resolver instead.
+def test_legacy_source_override_accepts_only_current_jaeger_ai(monkeypatch, tmp_path):
     from api.providers.jaeger import paths as jros_paths
 
-    override = tmp_path / "custom-jros"
-    (override / "jaeger_os").mkdir(parents=True)
+    override = tmp_path / "JaegerAI"
+    (override / "jaeger_ai").mkdir(parents=True)
+    launcher = override / "jaeger"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    launcher.chmod(0o755)
     monkeypatch.setenv("ARES_JROS_DIR", str(override))
     assert jros_paths.discover_jros_source_root() == override.resolve()
     assert jros_paths.jros_source_root() == override.resolve()
+
+
+def test_invalid_source_override_does_not_fall_through_to_another_checkout(monkeypatch, tmp_path):
+    from api.providers.jaeger import paths
+
+    stale = tmp_path / "stale-jros"
+    (stale / "jaeger_os").mkdir(parents=True)
+    monkeypatch.setenv("ARES_JAEGER_SOURCE_DIR", str(stale))
+    monkeypatch.delenv("ARES_JROS_DIR", raising=False)
+
+    assert paths.discover_jaeger_ai_source_root() is None
+
+
+def test_legacy_jros_product_is_not_a_jaeger_ai_dependency(monkeypatch, tmp_path):
+    from api.providers.jaeger import gateway_streaming as jgc
+    from api.providers.jaeger import paths
+
+    legacy = tmp_path / "legacy-jros"
+    (legacy / "jaeger_os").mkdir(parents=True)
+    (legacy / "jaeger").write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setenv("ARES_JAEGER_HOME", str(legacy))
+    monkeypatch.delenv("ARES_JAEGER_SOURCE_DIR", raising=False)
+    monkeypatch.delenv("ARES_JROS_DIR", raising=False)
+
+    assert paths.is_jaeger_ai_root(legacy) is False
+    assert jgc.local_jros_root() is None
 
 
 def test_local_jros_root_uses_standard_jaeger_home(monkeypatch, tmp_path):
     from api.providers.jaeger import gateway_streaming as jgc
 
     jaeger_home = tmp_path / "jaeger"
-    (jaeger_home / "jaeger_os").mkdir(parents=True)
+    (jaeger_home / "jaeger_ai").mkdir(parents=True)
+    launcher = jaeger_home / "jaeger"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    launcher.chmod(0o755)
     monkeypatch.delenv("ARES_JROS_DIR", raising=False)
     monkeypatch.setenv("ARES_JAEGER_HOME", str(jaeger_home))
 
@@ -348,12 +377,6 @@ def test_offline_gateway_surfaces_actionable_apperror(monkeypatch, tmp_path):
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
     monkeypatch.delenv("ARES_JROS_DIR", raising=False)
     monkeypatch.setenv("ARES_JAEGER_HOME", str(tmp_path / "missing-jaeger"))
-    # jros_gateway_chat does `from api.providers.jaeger.paths import discover_jros_source_root`,
-    # which auto-discovers sibling checkouts (../JROS, ~/GitHub/JROS, ~/JROS)
-    # independent of the env vars above — patch it out so this test's "no
-    # local checkout anywhere" premise holds on a dev machine that actually
-    # has a real JROS checkout sitting next to this repo.
-    monkeypatch.setattr(jros_gateway_chat, "discover_jros_source_root", lambda: None)
     sid = "jrosgw-down"
     stream_id = "stream-jrosgw-down"
     session = Session(session_id=sid, messages=[])
@@ -385,9 +408,9 @@ def test_backend_availability_follows_gateway_health(monkeypatch, tmp_path):
     try:
         assert backend_selector.is_jros_available() is True
         status = backend_selector.backend_status()
-        assert status["jros_local"] is True
-        assert status["jros_model"] == "fake-model"
-        assert status["jros_booted"] is True
+        assert status["jaeger_local"] is True
+        assert status["jaeger_model"] == "fake-model"
+        assert status["jaeger_booted"] is True
     finally:
         server.shutdown()
         server.server_close()
@@ -395,19 +418,13 @@ def test_backend_availability_follows_gateway_health(monkeypatch, tmp_path):
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
     monkeypatch.delenv("ARES_JROS_DIR", raising=False)
     monkeypatch.setenv("ARES_JAEGER_HOME", str(tmp_path / "missing-jaeger"))
-    # See the matching comment in test_offline_gateway_surfaces_actionable_apperror:
-    # sibling auto-discovery ignores these env vars, so patch it out to test
-    # "no local checkout anywhere" deterministically.
-    from api.providers.jaeger import gateway_streaming as jros_gateway_chat
-
-    monkeypatch.setattr(jros_gateway_chat, "discover_jros_source_root", lambda: None)
     # The healthy-gateway assertion above populated the status cache; drop it so
     # this half measures the now-unreachable gateway rather than that result.
     from api.providers.jaeger.status import reset_cache
 
     reset_cache()
     assert backend_selector.is_jros_available() is False
-    assert backend_selector.backend_status()["jros_local"] is False
+    assert backend_selector.backend_status()["jaeger_local"] is False
 
 
 def test_reset_jros_boot_posts_reset_and_swallows_offline(monkeypatch):
@@ -446,11 +463,15 @@ def _setup_stream(sid, stream_id, pending="hello jros"):
 
 
 def _local_checkout(monkeypatch, tmp_path):
-    """A directory that looks like a JROS checkout, wired to ARES_JROS_DIR,
-    with the gateway pointed at a dead port so the fallback path runs."""
-    (tmp_path / "jaeger_os").mkdir()
-    monkeypatch.setenv("ARES_JROS_DIR", str(tmp_path))
-    monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
+    """A validated JaegerAI checkout with no configured HTTP gateway."""
+    (tmp_path / "jaeger_ai").mkdir()
+    launcher = tmp_path / "jaeger"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    monkeypatch.setenv("ARES_JAEGER_SOURCE_DIR", str(tmp_path))
+    monkeypatch.delenv("ARES_JROS_DIR", raising=False)
+    monkeypatch.delenv("ARES_JAEGER_GATEWAY_URL", raising=False)
+    monkeypatch.delenv("ARES_JROS_GATEWAY_URL", raising=False)
 
 
 def test_local_fallback_runs_turn_when_no_gateway(monkeypatch, tmp_path):
@@ -524,7 +545,7 @@ def test_local_fallback_lock_error_is_actionable(monkeypatch, tmp_path):
 
     apperrors = [item[1] for item in stream._offline_buffer if item[0] == "apperror"]
     assert len(apperrors) == 1
-    assert apperrors[0]["type"] == "jros_local_error"
+    assert apperrors[0]["type"] == "jaeger_local_error"
     assert "already running" in apperrors[0]["message"]
     assert "JaegerAI" in apperrors[0]["message"]
 
@@ -562,8 +583,11 @@ def test_gateway_wins_over_local_fallback(monkeypatch, tmp_path):
 
     server, base = _start_fake_gateway()
     _FakeJrosGateway.seen = []
-    (tmp_path / "jaeger_os").mkdir()
-    monkeypatch.setenv("ARES_JROS_DIR", str(tmp_path))
+    (tmp_path / "jaeger_ai").mkdir()
+    launcher = tmp_path / "jaeger"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    monkeypatch.setenv("ARES_JAEGER_SOURCE_DIR", str(tmp_path))
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", base)
     monkeypatch.setattr(
         jros_gateway_chat, "_run_local_jros_turn",
@@ -590,7 +614,7 @@ def test_backend_availability_local_mode_without_gateway(monkeypatch, tmp_path):
     # Checkout alone is install-detected, not execution-available.
     assert backend_selector.is_jros_available() is False
     status = backend_selector.backend_status()
-    assert status["jros_local"] is False
+    assert status["jaeger_local"] is False
 
 
 def test_ares_capabilities_follow_external_runtime_and_shared_tools(monkeypatch):

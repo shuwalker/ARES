@@ -8,31 +8,20 @@ from __future__ import annotations
 import logging
 
 from .backends.router import get_router
+from .backend_catalog import (
+    JAEGER_BACKEND_ID,
+    VALID_BACKEND_IDS,
+    backend_display_name,
+    normalize_backend_id,
+)
 
 logger = logging.getLogger(__name__)
 
-BACKEND_JROS = "jros_local"
-
-VALID_BACKENDS = (
-    "hermes_local", "jros_local",
-    "claude_local", "codex_local", "gemini_local", "grok_local",
-    "opencode_local", "cursor_local", "pi_local",
-    "openai_cloud", "xai_cloud", "gemini_cloud", "gemini_antigravity",
-    "ollama_local",
-)
-
-_BACKEND_ALIASES = {
-    "hermes": "hermes_local",
-    "jaeger": "jros_local",
-    "jros": "jros_local",
-}
+BACKEND_JAEGER = JAEGER_BACKEND_ID
+VALID_BACKENDS = VALID_BACKEND_IDS
 
 def normalize_backend(value: object, *, fallback: str = "") -> str:
-    raw_value = str(value or "").strip().lower()
-    raw = _BACKEND_ALIASES.get(raw_value, raw_value)
-    if raw in VALID_BACKENDS:
-        return raw
-    return fallback if fallback in VALID_BACKENDS else ""
+    return normalize_backend_id(value, fallback=fallback)
 
 
 def get_active_backend(config: dict) -> str:
@@ -83,32 +72,16 @@ def backend_status() -> dict:
     status = {
         name: backend.is_available()
         for name, backend in router.list_all().items()
-        if name not in {"jros", "jros_local"}
+        if normalize_backend(name) != JAEGER_BACKEND_ID
     }
     jros_available = is_jros_available()
-    status["jros_local"] = jros_available
+    status[JAEGER_BACKEND_ID] = jros_available
     if jros_available:
         for key, value in jros_gateway_details().items():
-            status[f"jros_{key}"] = value
+            status[f"jaeger_{key}"] = value
     return status
 
 
 def backend_label(backend: str) -> str:
     """Human-readable label for the backend selector dropdown."""
-    labels = {
-        "hermes_local": "Hermes Agent",
-        "jros_local": "JROS",
-        "claude_local": "Claude Code",
-        "codex_local": "OpenAI Codex",
-        "gemini_local": "Google Gemini",
-        "grok_local": "xAI Grok",
-        "opencode_local": "OpenCode",
-        "cursor_local": "Cursor",
-        "pi_local": "Pi Coding Agent",
-        "openai_cloud": "OpenAI",
-        "xai_cloud": "xAI Grok",
-        "gemini_cloud": "Google Gemini API",
-        "gemini_antigravity": "Gemini (Antigravity IDE)",
-        "ollama_local": "Ollama",
-    }
-    return labels.get(backend, backend)
+    return backend_display_name(backend) or backend

@@ -619,7 +619,7 @@ export function CanvasPage() {
   return (
     <div className="flex h-full flex-col">
       <PageHeader
-        title="Canvas & Synthetic Person"
+        title="Studio Canvas"
         description="Freeform workspace — sticky notes, cards, and whiteboard for the synthetic person. Drag to rearrange, double-click to edit."
         action={
           <div className="flex items-center gap-2">

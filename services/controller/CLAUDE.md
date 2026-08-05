@@ -1,5 +1,5 @@
-# ARES WebUI Rules
+# Controller Instructions for Claude-Compatible Agents
 
-Rules and instructions for the ARES WebUI component have been consolidated to:
-- WebUI rules: [.claude/webui/CLAUDE.md](file:///../.claude/webui/CLAUDE.md)
-- Root rules: [.claude/CLAUDE.md](file:///../.claude/CLAUDE.md)
+Read [`../../AGENTS.md`](../../AGENTS.md), then
+[`AGENTS.md`](AGENTS.md). Those files are canonical; do not duplicate their
+product or controller rules here.

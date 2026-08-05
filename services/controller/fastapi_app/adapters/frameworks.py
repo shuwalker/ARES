@@ -12,6 +12,26 @@ from .base import AdapterError, AdapterHealth, BaseLLMAdapter, ModelDescriptor, 
 TurnStarter = Callable[..., dict[str, Any]]
 
 
+def _descriptors_from_inventory(inventory: dict[str, Any] | None, *, connection_id: str) -> list[ModelDescriptor]:
+    """Convert catalog.model_entry shape to ModelDescriptor for UI display.
+
+    Returns empty list when inventory is None or has no models (never a fake
+    placeholder ID). Callers should treat None and [] identically.
+    """
+    if not inventory or not isinstance(inventory, dict):
+        return []
+    models: list[ModelDescriptor] = []
+    for entry in inventory.get("models") or []:
+        if not isinstance(entry, dict):
+            continue
+        model_id = str(entry.get("id") or "").strip()
+        label = str(entry.get("label") or model_id).strip()
+        provider = entry.get("provider")  # can be None
+        if model_id:
+            models.append(ModelDescriptor(model_id, label or model_id, provider, connection_id))
+    return models
+
+
 def _provider_probe_health(
     *,
     provider: str,
@@ -82,7 +102,7 @@ class JournaledFrameworkAdapter(BaseLLMAdapter):
             ) from exc
         if not health.available:
             raise AdapterError(
-                400 if self.adapter_id == "jros_local" else 503,
+                400 if self.adapter_id == "jaeger_local" else 503,
                 health.message,
                 code="runtime_unavailable",
                 context={"connection_id": self.adapter_id, "state": health.state},
@@ -205,13 +225,13 @@ class JournaledFrameworkAdapter(BaseLLMAdapter):
 
 
 class JaegerAdapter(JournaledFrameworkAdapter):
-    adapter_id = "jros_local"
-    display_name = "JaegerAI"
+    adapter_id = "jaeger_local"
+    display_name = "Jaeger AI"
 
     def __init__(self, *, turn_starter: TurnStarter | None = None) -> None:
-        from api.providers.jaeger.backend import JROSBackend
+        from api.providers.jaeger.backend import JaegerBackend
 
-        super().__init__(backend=JROSBackend(), turn_starter=turn_starter)
+        super().__init__(backend=JaegerBackend(), turn_starter=turn_starter)
 
     def check_health(self, *, profile: str | None) -> AdapterHealth:
         del profile
@@ -268,9 +288,9 @@ class HermesAdapter(JournaledFrameworkAdapter):
 
     def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
         del profile
-        # Hermes uses its own model routing from ~/.hermes/config.yaml
-        # We report a generic entry so the UI shows something selectable.
-        return [ModelDescriptor("hermes-default", "Hermes (default model)", None, self.adapter_id)]
+        # Delegate to the backend's real model discovery (Hermes config.yaml + auth.json)
+        inventory = self.backend.inventory()
+        return _descriptors_from_inventory(inventory, connection_id=self.adapter_id)
 
 
 class CliFrameworkAdapter(JournaledFrameworkAdapter):
@@ -312,7 +332,9 @@ class CliFrameworkAdapter(JournaledFrameworkAdapter):
 
     def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
         del profile
-        return [ModelDescriptor(f"{self.adapter_id}-default", self.display_name, None, self.adapter_id)]
+        # Delegate to the backend's real model discovery (env/config files)
+        inventory = self.backend.inventory()
+        return _descriptors_from_inventory(inventory, connection_id=self.adapter_id)
 
 
 class ClaudeLocalAdapter(CliFrameworkAdapter):
@@ -452,14 +474,7 @@ class OllamaLocalAdapter(JournaledFrameworkAdapter):
 
     def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
         del profile
-        # Ask Ollama what it actually has. This previously returned a hardcoded
-        # "llama3.2" whether or not it was installed, so the picker advertised a
-        # model the daemon could not serve and hid every model it could.
-        from api.providers.ollama.status import installed_models
-
-        descriptors: list[ModelDescriptor] = []
-        for entry in installed_models():
-            name = str((entry or {}).get("name") or "").strip()
-            if name:
-                descriptors.append(ModelDescriptor(name, name, "ollama", self.adapter_id))
-        return descriptors
+        # Delegate to the backend's real model discovery via inventory()
+        # This ensures Registry A and Registry B report the same models
+        inventory = self.backend.inventory()
+        return _descriptors_from_inventory(inventory, connection_id=self.adapter_id)

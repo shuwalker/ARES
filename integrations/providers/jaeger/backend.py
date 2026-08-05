@@ -11,8 +11,8 @@ from typing import Any, Dict, List, cast
 from api.providers.agentic_backend import AgenticBackend
 
 
-class JROSBackend(AgenticBackend):
-    name = "jros_local"
+class JaegerBackend(AgenticBackend):
+    name = "jaeger_local"
     supports_tools = True
     supports_persona = True
 
@@ -30,7 +30,7 @@ class JROSBackend(AgenticBackend):
         return run_jros_streaming, False, True
 
     def get_backend_name(self) -> str:
-        return "JROS"
+        return "Jaeger AI"
 
     def health(self) -> Dict[str, Any]:
         from api.providers.jaeger.gateway_streaming import jros_gateway_health
@@ -39,7 +39,7 @@ class JROSBackend(AgenticBackend):
             return {
                 "status": "ok",
                 "latency_ms": 0.0,
-                "message": "JROS Gateway reachable",
+                "message": "Jaeger AI gateway reachable",
                 "details": health_payload,
             }
         
@@ -49,13 +49,13 @@ class JROSBackend(AgenticBackend):
             return {
                 "status": "degraded",
                 "latency_ms": 0.0,
-                "message": "Gateway offline; falling back to local JROS checkout",
+                "message": "Gateway offline; falling back to the local Jaeger AI checkout",
             }
             
         return {
             "status": "error",
             "latency_ms": 0.0,
-            "message": "JROS Gateway unreachable and local checkout not found",
+            "message": "Jaeger AI gateway unreachable and local checkout not found",
         }
 
     def identity_projection(self) -> Dict[str, Any]:
@@ -68,18 +68,18 @@ class JROSBackend(AgenticBackend):
             if persona:
                 return {
                     "name": persona.get("identity", {}).get("display_name") or persona.get("name") or instance.title(),
-                    "description": persona.get("description") or f"JROS character: {instance}",
+                    "description": persona.get("description") or f"Jaeger AI character: {instance}",
                     "avatar_state": "idle",
                 }
             return {
                 "name": instance.title(),
-                "description": f"JROS instance: {instance}",
+                "description": f"Jaeger AI instance: {instance}",
                 "avatar_state": "idle",
             }
             
         return {
-            "name": "JROS",
-            "description": "JROS peer agent runtime",
+            "name": "Jaeger AI",
+            "description": "Jaeger AI peer agent runtime",
             "avatar_state": "idle",
         }
 
@@ -101,7 +101,7 @@ class JROSBackend(AgenticBackend):
         return [
             {
                 "name": "jaeger_bridge_tool",
-                "description": "Spawn JROS subprocess tool execution",
+                "description": "Spawn Jaeger AI subprocess tool execution",
                 "parameters": {"type": "object", "properties": {}},
             }
         ]
@@ -110,15 +110,15 @@ class JROSBackend(AgenticBackend):
         return {
             "type": "object",
             "properties": {
-                "jros_gateway_url": {
+                "jaeger_gateway_url": {
                     "type": "string",
-                    "title": "JROS Gateway URL",
+                    "title": "Jaeger AI Gateway URL",
                     "default": "",
                     "description": "Optional endpoint owned by the connected JaegerAI provider.",
                 },
-                "jros_instance_name": {
+                "jaeger_instance_name": {
                     "type": "string",
-                    "title": "JROS Instance Name",
+                    "title": "Jaeger AI Instance Name",
                     "default": "lilith",
                 },
             },
@@ -142,7 +142,7 @@ class JROSBackend(AgenticBackend):
         available = self.is_available()
         return {
             "available": available,
-            "label": "JROS / JaegerAI" if available else "JROS (not found)",
+            "label": "Jaeger AI" if available else "Jaeger AI (not found)",
             "capabilities": {
                 "supports_tools": self.supports_tools,
                 "supports_persona": self.supports_persona,
@@ -182,7 +182,7 @@ class JROSBackend(AgenticBackend):
         model_id = default.get("model")
         provider = default.get("provider")
 
-        # Use the shared resolver so ARES_JROS_GATEWAY_URL is honoured here too.
+        # Use the shared resolver so ARES_JAEGER_GATEWAY_URL is honoured here too.
         # This path previously read only the schema default, so a gateway
         # configured on another host was silently ignored and probes went to
         # localhost.
@@ -197,7 +197,7 @@ class JROSBackend(AgenticBackend):
             transport_entry(
                 id="http_gateway",
                 kind="http_gateway",
-                label="ARES JROS HTTP gateway",
+                label="Jaeger AI HTTP gateway",
                 in_use=True,
                 endpoint=f"{gateway_url}/v1/chat/completions" if gateway_url else "",
                 notes="Active ARES path: OpenAI-compatible chat completions via jros_gateway.py.",
@@ -205,16 +205,16 @@ class JROSBackend(AgenticBackend):
             transport_entry(
                 id="local_checkout",
                 kind="subprocess",
-                label="Local JROS checkout fallback",
+                label="Local Jaeger AI checkout fallback",
                 in_use=False,
-                notes="Used when gateway is offline but a local JROS tree is present.",
+                notes="Used when the gateway is offline but a local Jaeger AI checkout is present.",
             ),
             transport_entry(
                 id="mcp",
                 kind="mcp",
-                label="JROS/Jaeger MCP (if configured)",
+                label="Jaeger AI MCP (if configured)",
                 in_use=False,
-                notes="Catalog placeholder — declare MCP tools when JROS exposes them; ARES may not consume yet.",
+                notes="Catalog placeholder — declare MCP tools when Jaeger AI exposes them; ARES may not consume yet.",
             ),
         ]
 
@@ -231,7 +231,7 @@ class JROSBackend(AgenticBackend):
             gateway_entry(
                 id="jros_native_surfaces",
                 kind="native_app",
-                label="JROS native TUI / windowed app",
+                label="Jaeger AI native TUI / windowed app",
                 in_use=False,
                 protocol="jros-native",
                 notes="JaegerAI desktop/TUI surfaces; not the ARES WebUI transport.",
@@ -241,17 +241,17 @@ class JROSBackend(AgenticBackend):
         mcp = [
             mcp_entry(
                 id="jros_mcp_optional",
-                label="JROS MCP tools (optional)",
+                label="Jaeger AI MCP tools (optional)",
                 in_use_by_ares=False,
                 used_by=["external_mcp_clients"],
-                notes="Reserved catalog slot for JROS-exposed MCP tools when present.",
+                notes="Reserved catalog slot for Jaeger AI MCP tools when present.",
             )
         ]
 
         return finalize_inventory(
             {
                 "worker_id": self.name,
-                "display_name": "JaegerAI (JROS)",
+                "display_name": "Jaeger AI",
                 "models": models,
                 "providers": providers,
                 "default": default,
@@ -281,4 +281,8 @@ class JROSBackend(AgenticBackend):
 # Register with the dynamic backend registry
 from api.backends.cli_backends import BackendRegistry  # noqa: E402
 
-BackendRegistry.register(JROSBackend)
+BackendRegistry.register(JaegerBackend)
+
+# Import compatibility for extensions written against the pre-split class
+# name. The registered and persisted identity remains ``jaeger_local``.
+JROSBackend = JaegerBackend

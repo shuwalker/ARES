@@ -50,10 +50,10 @@ def sync_main_model_to_jros(result: dict) -> None:
 
 def filter_catalog_for_active_backend(catalog: dict) -> dict:
     try:
-        from api.backend_selector import BACKEND_JROS, get_active_backend
+        from api.backend_selector import BACKEND_JAEGER, get_active_backend
         from api.config import get_config
 
-        if get_active_backend(get_config()) != BACKEND_JROS:
+        if get_active_backend(get_config()) != BACKEND_JAEGER:
             return catalog
     except Exception:
         return catalog
@@ -66,7 +66,7 @@ def filter_catalog_for_active_backend(catalog: dict) -> dict:
         in JROS_COMPATIBLE_MODEL_PROVIDERS
     ]
     filtered["groups"] = groups
-    filtered["ares_backend"] = BACKEND_JROS
+    filtered["ares_backend"] = BACKEND_JAEGER
     filtered["compatible_providers"] = sorted(JROS_COMPATIBLE_MODEL_PROVIDERS)
     badges = filtered.get("configured_model_badges")
     if isinstance(badges, dict):

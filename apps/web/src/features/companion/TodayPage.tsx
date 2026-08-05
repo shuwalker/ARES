@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import {
   CalendarClock,
   CheckCircle2,
+  Circle,
   Clock,
   ExternalLink,
   MessageCircle,
   Network,
   PlayCircle,
   Pin,
+  Plus,
   RefreshCw,
   Search,
   Sparkles,
@@ -26,7 +28,7 @@ import { useAres } from "@/shared/ares-context";
 import { useLocalProfile } from "@/shared/local-profile";
 import { aresApi } from "@/shared/ares-api";
 import type { ScheduleEntry } from "@/shared/ares-api";
-import { readableError } from "@/shared/api-client";
+import { apiFetch, readableError } from "@/shared/api-client";
 import { useProductState } from "@/shared/use-product-state";
 
 interface PinnedGoal {
@@ -35,6 +37,41 @@ interface PinnedGoal {
   done: boolean;
   createdAt: string;
 }
+
+interface OrganizerTask {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  estimated_minutes?: number | null;
+}
+
+interface OrganizerToday {
+  now: OrganizerTask[];
+  next: OrganizerTask[];
+  later: OrganizerTask[];
+  blocked: OrganizerTask[];
+  unscheduled: OrganizerTask[];
+}
+
+interface OrganizerPlan {
+  plan: Array<{
+    task_id: string;
+    task_title: string;
+    start_time: string;
+    duration_minutes: number;
+  }>;
+  summary: string;
+  generated_at: string;
+}
+
+const EMPTY_ORGANIZER_TODAY: OrganizerToday = {
+  now: [],
+  next: [],
+  later: [],
+  blocked: [],
+  unscheduled: [],
+};
 
 // ── Compact quick-stat card ──────────────────────────────────────────────
 function QuickStatCard({
@@ -181,6 +218,12 @@ export function TodayPage() {
     setDailyGoalState((current) => ({ goals: typeof update === "function" ? update(current.goals) : update }));
   }, [setDailyGoalState]);
   const [newGoalText, setNewGoalText] = useState("");
+  const [organizerToday, setOrganizerToday] = useState<OrganizerToday>(EMPTY_ORGANIZER_TODAY);
+  const [organizerPlan, setOrganizerPlan] = useState<OrganizerPlan | null>(null);
+  const [organizerLoading, setOrganizerLoading] = useState(true);
+  const [organizerError, setOrganizerError] = useState("");
+  const [captureText, setCaptureText] = useState("");
+  const [organizerBusy, setOrganizerBusy] = useState("");
 
   const greeting = profile.displayName
     ? `Good to see you, ${profile.displayName}.`
@@ -189,6 +232,58 @@ export function TodayPage() {
   const active = snapshot.sessions.filter((session) => session.activeStreamId);
   const recent = snapshot.sessions.slice(0, 5);
   const pinned = snapshot.sessions.filter((session) => session.pinned);
+
+  const loadOrganizer = useCallback(async () => {
+    setOrganizerLoading(true);
+    try {
+      const [today, plan] = await Promise.all([
+        apiFetch<OrganizerToday>("/api/organizer/today"),
+        apiFetch<OrganizerPlan>("/api/organizer/plan"),
+      ]);
+      setOrganizerToday(today);
+      setOrganizerPlan(plan);
+      setOrganizerError("");
+    } catch (error) {
+      setOrganizerError(readableError(error, "Organizer is unavailable."));
+    } finally {
+      setOrganizerLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadOrganizer(); }, [loadOrganizer]);
+
+  const captureTask = useCallback(async () => {
+    const title = captureText.trim();
+    if (!title) return;
+    setOrganizerBusy("capture");
+    try {
+      await apiFetch("/api/organizer/tasks", {
+        method: "POST",
+        body: JSON.stringify({ title, status: "todo", priority: "medium" }),
+      });
+      setCaptureText("");
+      await loadOrganizer();
+    } catch (error) {
+      setOrganizerError(readableError(error, "Task could not be captured."));
+    } finally {
+      setOrganizerBusy("");
+    }
+  }, [captureText, loadOrganizer]);
+
+  const completeTask = useCallback(async (taskId: string) => {
+    setOrganizerBusy(taskId);
+    try {
+      await apiFetch(`/api/organizer/tasks/${encodeURIComponent(taskId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "done" }),
+      });
+      await loadOrganizer();
+    } catch (error) {
+      setOrganizerError(readableError(error, "Task could not be completed."));
+    } finally {
+      setOrganizerBusy("");
+    }
+  }, [loadOrganizer]);
 
   // ── Load schedules ───────────────────────────────────────────────────
   useEffect(() => {
@@ -257,8 +352,8 @@ export function TodayPage() {
   return (
     <div className="page-stack">
       <PageHeader
-        title="Today"
-        description={`${greeting} This view reports current ARES state without requiring an assistant runtime.`}
+        title="Now"
+        description={`${greeting} Capture obligations, see the plan, and decide what comes next.`}
         action={
           <div className="flex items-center gap-2">
             <Button asChild variant="outline">
@@ -271,6 +366,7 @@ export function TodayPage() {
         }
       />
       {dailyGoalStatus.error && <p className="text-sm text-destructive" role="alert">{dailyGoalStatus.error}</p>}
+      {organizerError && <p className="text-sm text-destructive" role="alert">{organizerError}</p>}
 
       {snapshot.error && (
         <p className="rounded-md border border-status-limited/40 bg-status-limited/10 px-4 py-3 text-sm text-status-limited">
@@ -278,13 +374,78 @@ export function TodayPage() {
         </p>
       )}
 
+      <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Plus className="size-4 text-primary" />
+            Quick capture
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={() => void loadOrganizer()} disabled={organizerLoading}>
+            <RefreshCw className={organizerLoading ? "size-4 animate-spin" : "size-4"} />
+            Replan
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void captureTask(); }}>
+            <input
+              value={captureText}
+              onChange={(event) => setCaptureText(event.target.value)}
+              placeholder="What do you need to remember or do?"
+              className="min-w-0 flex-1 rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus:border-ring"
+            />
+            <Button type="submit" disabled={!captureText.trim() || organizerBusy === "capture"}>Capture</Button>
+          </form>
+
+          {organizerLoading && !organizerPlan ? (
+            <Skeleton className="h-20 w-full" />
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+              <div>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Today’s plan</p>
+                {organizerPlan?.plan.length ? (
+                  <div className="divide-y">
+                    {organizerPlan.plan.map((entry) => (
+                      <div key={`${entry.task_id}-${entry.start_time}`} className="flex items-center gap-3 py-2 text-sm">
+                        <span className="w-12 shrink-0 font-mono text-xs text-muted-foreground">{entry.start_time}</span>
+                        <span className="min-w-0 flex-1 truncate">{entry.task_title}</span>
+                        <span className="text-xs text-muted-foreground">{entry.duration_minutes}m</span>
+                        <Button variant="ghost" size="icon-sm" aria-label={`Complete ${entry.task_title}`} disabled={organizerBusy === entry.task_id} onClick={() => void completeTask(entry.task_id)}>
+                          <Circle className="size-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="text-sm text-muted-foreground">No tasks planned yet.</p>}
+                {organizerPlan && <p className="mt-2 text-xs text-muted-foreground">{organizerPlan.summary}</p>}
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Unscheduled</p>
+                {organizerToday.unscheduled.length ? (
+                  <div className="space-y-1">
+                    {organizerToday.unscheduled.slice(0, 6).map((task) => (
+                      <div key={task.id} className="flex items-center gap-2 rounded-md border px-2.5 py-2 text-sm">
+                        <span className="min-w-0 flex-1 truncate">{task.title}</span>
+                        <Badge variant="outline">{task.priority}</Badge>
+                        <Button variant="ghost" size="icon-sm" aria-label={`Complete ${task.title}`} disabled={organizerBusy === task.id} onClick={() => void completeTask(task.id)}>
+                          <CheckCircle2 className="size-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="text-sm text-muted-foreground">Nothing waiting to be scheduled.</p>}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* ── Quick stats cards ───────────────────────────────────────── */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="Quick stats">
         <QuickStatCard
           icon={CheckCircle2}
-          value="0"
-          label="Tasks completed"
-          description="No task tracking yet"
+          value={organizerPlan?.plan.length ?? 0}
+          label="Tasks planned"
+          description={organizerPlan?.summary || "Organizer loading"}
         />
         <QuickStatCard
           icon={PlayCircle}

@@ -4,9 +4,9 @@ WORKDIR /frontend
 
 # Build the React application once. Node and the source dependency tree stay
 # out of the Python runtime image.
-COPY frontend/package.json frontend/package-lock.json ./
+COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci
-COPY frontend/ ./
+COPY apps/web/ ./
 RUN npm run build
 
 
@@ -99,7 +99,7 @@ USER root
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 
 COPY --chown=root:root . /apptoo
-COPY --from=frontend-builder --chown=root:root /frontend/dist /apptoo/frontend/dist
+COPY --from=frontend-builder --chown=root:root /frontend/dist /apptoo/apps/web/dist
 
 # Bake the git version tag into the image so the settings badge works even
 # when .git is not present (it is excluded by .dockerignore).

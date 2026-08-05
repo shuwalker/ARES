@@ -44,3 +44,6 @@ watchdog>=6.0  # ARES hot-reload: auto-restart on .py changes (ARES_WEBUI_RELOAD
 # instead). Missing package or key raises a catchable per-subtask error, not
 # a server crash. Install only if you want direct-API mission dispatch:
 #   pip install anthropic>=0.40 openai>=1.50
+# LiteLLM: Industry-standard multi-provider LLM cost tracking and pricing.
+# Used by Anthropic, LangChain, and enterprise AI teams for accurate cost calculation.
+litellm>=1.40.0,<2.0

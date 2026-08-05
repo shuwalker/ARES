@@ -3,6 +3,7 @@ import {
   Cable,
   Cpu,
   Gauge,
+  GraduationCap,
   Key,
   Server,
   Shield,
@@ -11,34 +12,52 @@ import {
   Webhook,
   CalendarClock,
   HardDrive,
+  Sparkles,
 } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { SurfaceLinkGrid, SurfaceNote, SurfaceShell } from "@/components/surfaces/SurfaceShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAres } from "@/shared/ares-context";
 
-/**
- * System surface — local self-hosted infrastructure (UI name for Foundation).
- * Memory infrastructure lives here; knowledge content lives in Library.
- */
+function ControlGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <p className="mt-1 text-xs text-foreground/70">{description}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export function SystemPage() {
   const { snapshot } = useAres();
 
   return (
     <SurfaceShell
-      title="System"
-      description="Your box: workers, models, devices, network, storage, permissions, memory infrastructure, and health."
+      title="Control Center"
+      description="Configure the intelligence, access, safety, and health behind your ARES experience."
     >
       <SurfaceNote>
-        This is not where you read books or write journals. Configure how the digital world works —
-        self-hoster ground under the Companion.
+        Your everyday work stays in Agent, Engineering, Studio, Life, and Library.
+        Control Center is where you decide what ARES can use and what it may do.
       </SurfaceNote>
 
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <HardDrive className="size-4 text-primary" />
-            Box status
+            System status
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2 text-xs">
@@ -57,82 +76,45 @@ export function SystemPage() {
         </CardContent>
       </Card>
 
-      <SurfaceLinkGrid
-        links={[
-          {
-            to: "/connections",
-            label: "Connections",
-            description: "Providers and channels the Companion can use.",
-            icon: Cable,
-          },
-          {
-            to: "/agents",
-            label: "Workers",
-            description: "Agent frameworks and worker health.",
-            icon: Cpu,
-          },
-          {
-            to: "/mcp",
-            label: "MCP servers",
-            description: "Tool servers and capabilities.",
-            icon: Server,
-          },
-          {
-            to: "/config",
-            label: "Config",
-            description: "Runtime and product configuration.",
-            icon: Sliders,
-          },
-          {
-            to: "/activity",
-            label: "Activity",
-            description: "What ran — honest execution visibility.",
-            icon: Activity,
-          },
-          {
-            to: "/analytics",
-            label: "Analytics",
-            description: "Usage patterns and trends.",
-            icon: Gauge,
-          },
-          {
-            to: "/usage",
-            label: "Usage & cost",
-            description: "Tokens, cost, provider spend.",
-            icon: Gauge,
-          },
-          {
-            to: "/pairing",
-            label: "Pairing",
-            description: "Devices and remote reachability.",
-            icon: Smartphone,
-          },
-          {
-            to: "/webhooks",
-            label: "Webhooks",
-            description: "Inbound automation hooks.",
-            icon: Webhook,
-          },
-          {
-            to: "/secrets",
-            label: "Secrets",
-            description: "Credentials vault for the box.",
-            icon: Key,
-          },
-          {
-            to: "/schedules",
-            label: "Schedules",
-            description: "Cron and recurring work on your metal.",
-            icon: CalendarClock,
-          },
-          {
-            to: "/settings",
-            label: "Settings & profile",
-            description: "Local profile, Companion name, privacy posture.",
-            icon: Shield,
-          },
-        ]}
-      />
+      <ControlGroup
+        title="Intelligence"
+        description="Choose the workers, models, tools, and reusable capabilities ARES may call."
+      >
+        <SurfaceLinkGrid links={[
+          { to: "/agents", label: "Workers", description: "Agent runtimes, capabilities, and availability.", icon: Cpu },
+          { to: "/connections", label: "Connections", description: "AI providers, services, and communication channels.", icon: Cable },
+          { to: "/mcp", label: "MCP servers", description: "External tool servers available to workers.", icon: Server },
+          { to: "/skills", label: "Skills", description: "Reusable workflows ARES can assign to workers.", icon: GraduationCap },
+          { to: "/hatchery", label: "Local models", description: "Discover and manage intelligence running on this machine.", icon: Sparkles },
+          { to: "/skills-studio", label: "Skill Studio", description: "Create and refine reusable worker capabilities.", icon: GraduationCap },
+        ]} />
+      </ControlGroup>
+
+      <ControlGroup
+        title="Access and safety"
+        description="Control memory, privacy, devices, credentials, integrations, and autonomous actions."
+      >
+        <SurfaceLinkGrid links={[
+          { to: "/memory-privacy", label: "Memory & Privacy", description: "Context store, external history, retention, and redaction.", icon: Shield },
+          { to: "/permissions-autonomy", label: "Permissions & Autonomy", description: "Observe-only, ask-before-acting, delegated, and device reach.", icon: Shield },
+          { to: "/pairing", label: "Devices", description: "Pair devices and manage remote reachability.", icon: Smartphone },
+          { to: "/secrets", label: "Secrets", description: "Credentials used by approved connections and workers.", icon: Key },
+          { to: "/webhooks", label: "Webhooks", description: "Allow trusted external systems to trigger ARES.", icon: Webhook },
+          { to: "/schedules", label: "Automations", description: "Recurring and scheduled work performed on your behalf.", icon: CalendarClock },
+          { to: "/config", label: "Advanced settings", description: "Technical runtime and product configuration.", icon: Sliders },
+        ]} />
+      </ControlGroup>
+
+      <ControlGroup
+        title="Observe"
+        description="See what ran, whether it worked, and what resources it consumed."
+      >
+        <SurfaceLinkGrid links={[
+          { to: "/activity", label: "Activity", description: "Executions, tool use, and current worker state.", icon: Activity },
+          { to: "/analytics", label: "Analytics", description: "Reliability and usage patterns over time.", icon: Gauge },
+          { to: "/usage", label: "Usage & cost", description: "Tokens, model usage, and provider spending.", icon: Gauge },
+        ]} />
+      </ControlGroup>
     </SurfaceShell>
   );
 }

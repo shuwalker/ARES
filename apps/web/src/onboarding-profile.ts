@@ -40,7 +40,7 @@ export const AUTONOMY_OPTIONS: Array<{
 ];
 
 export function stepAfterIdentity(mode: LocalProfile["setupMode"]): 2 {
-  return 2; // Always go to JaegerAI character step after identity
+  return 2; // Always go to the Jaeger AI character step after identity
 }
 
 export function stepBeforeIntelligence(mode: LocalProfile["setupMode"]): 5 {
@@ -72,7 +72,7 @@ export function intelligenceChoiceLabel(
   return runtimeName?.trim() || choice.runtimeId;
 }
 
-/** JaegerAI character for onboarding */
+/** Jaeger AI character for onboarding */
 export interface JaegerCharacter {
   id: string;
   name: string;
@@ -82,7 +82,7 @@ export interface JaegerCharacter {
   voice_id: string;
 }
 
-/** JaegerAI model recommendation */
+/** Jaeger AI model recommendation */
 export interface JaegerModel {
   registry_key: string;
   display_name: string;
@@ -92,7 +92,7 @@ export interface JaegerModel {
   notes: string;
 }
 
-/** JaegerAI onboarding state */
+/** Jaeger AI onboarding state */
 export interface JaegerOnboardingState {
   characterId: string | null;
   awakeModel: string | null;

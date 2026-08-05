@@ -156,7 +156,7 @@ def detect_capabilities(config: dict[str, Any] | None = None) -> dict[str, bool]
     return {
         "mac_app": system == "darwin",
         "webui": True,
-        "jros": bool(backend.get("jros_local")),
+        "jaeger": bool(backend.get("jaeger_local")),
         "local_tools": True,
         "filesystem": True,
         "terminal": True,

@@ -19,8 +19,8 @@ describe("ARES backend translators", () => {
       health: { state: "needs_attention", available: false, message: "Configure a Companion." },
       capabilities: ["conversation"],
     }] })).toEqual([{
-      id: "jros",
-      name: "JaegerAI",
+      id: "jaeger_local",
+      name: "Jaeger AI",
       kind: "runtime",
       selected: true,
       state: "needs_attention",
@@ -28,6 +28,14 @@ describe("ARES backend translators", () => {
       detail: "Configure a Companion.",
       capabilities: ["conversation"],
     }]);
+  });
+
+  it("normalizes legacy Jaeger backend ids before they enter UI state", () => {
+    const [session] = translateSessions({ sessions: [{
+      session_id: "legacy-jaeger",
+      ares_backend: "jros_local",
+    }] });
+    expect(session.backendId).toBe("jaeger_local");
   });
 
   it("maps legacy session fields into frontend-owned contracts", () => {

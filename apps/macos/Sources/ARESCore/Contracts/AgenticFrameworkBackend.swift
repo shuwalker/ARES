@@ -2,14 +2,14 @@ import Foundation
 
 /// Adapter boundary for full agentic frameworks and ARES-owned services.
 ///
-/// This protocol intentionally treats Hermes and JROS as peer full frameworks.
+/// This protocol intentionally treats Hermes and Jaeger AI as peer full frameworks.
 /// ARES may also use ARES-native services, local model runners, cloud providers,
 /// or a hybrid of multiple backends. No backend owns ARES identity or UX.
 public protocol AgenticFrameworkBackend: AnyObject, Sendable {
     /// Stable identifier for the backend adapter instance.
     var identifier: String { get }
 
-    /// Backend family. Hermes and JROS are both full agentic frameworks here.
+    /// Backend family. Hermes and Jaeger AI are both full agentic frameworks here.
     var kind: ExecutionBackendKind { get }
 
     /// Human-readable label for UI/status surfaces.

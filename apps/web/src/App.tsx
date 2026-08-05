@@ -22,7 +22,7 @@ const ActivationScreen = lazy(async () => {
  * Canonical ARES WebUI entry (ARES = app name only).
  *
  * Product shell: CommandCenterShell via AppShell.
- * Surfaces: Chat | Companion | Self | Workshop | Library | System
+ * Environments: Agent | Engineering | Studio | Life | Library | Control Center
  *   → docs/architecture/PRODUCT_SURFACES.md
  */
 export default function App() {

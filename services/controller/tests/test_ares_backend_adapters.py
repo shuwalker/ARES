@@ -7,7 +7,7 @@ import pytest
 
 from api.backend_selector import VALID_BACKENDS, normalize_backend
 from api.providers.agentic_backend import AgenticBackend
-from api.providers.jaeger.backend import JROSBackend
+from api.providers.jaeger.backend import JaegerBackend
 from api.backends.router import get_default_router, BackendRouter
 from api.backends.cli_backends import BackendRegistry
 
@@ -25,8 +25,7 @@ def test_router_contains_only_external_execution_backends():
         if name.endswith("_app"):
             continue  # App automation backends are a separate category
         assert name in VALID_BACKENDS, f"{name} not in VALID_BACKENDS"
-    # JROS should be in the registry
-    assert "jros_local" in BackendRegistry._backends
+    assert "jaeger_local" in BackendRegistry._backends
 
 
 @pytest.mark.parametrize("backend_key", VALID_BACKENDS)
@@ -50,6 +49,8 @@ def test_runtime_selection_has_no_implicit_or_legacy_builtin_fallback():
     assert normalize_backend("ares") == ""
     assert normalize_backend("hybrid") == ""
     assert normalize_backend("hermes") == "hermes_local"
+    assert normalize_backend("jaeger") == "jaeger_local"
+    assert normalize_backend("jros_local") == "jaeger_local"
 
     with pytest.raises(LookupError):
         get_default_router().select_worker("missing")

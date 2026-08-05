@@ -99,8 +99,8 @@ _ADAPTER_SPECS: list[dict[str, Any]] = [
         "config_dirs": ["~/.ollama"],
     },
     {
-        "adapter_id": "jros_local",
-        "display_name": "JaegerAI",
+        "adapter_id": "jaeger_local",
+        "display_name": "Jaeger AI",
         "binaries": ["jaeger", "jros"],
         "config_dirs": [],
     },

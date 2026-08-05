@@ -127,10 +127,10 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// JROS/Jaeger Gateway API key. Stored locally for Finder-launched app
-    /// sessions and exported as ARES_JROS_GATEWAY_KEY when ARES starts WebUI.
+    /// Jaeger AI Gateway API key. Stored locally for Finder-launched app
+    /// sessions and exported as ARES_JAEGER_GATEWAY_KEY when ARES starts WebUI.
     @Published public var jrosAPIKey: String = ARESSecretStore.loadMigratingLegacy(
-        environmentKey: "ARES_JROS_GATEWAY_KEY",
+        environmentKey: "ARES_JAEGER_GATEWAY_KEY",
         account: "jros-gateway-api-key",
         legacyDefaultsKey: "ares.config.jrosAPIKey"
     ) {

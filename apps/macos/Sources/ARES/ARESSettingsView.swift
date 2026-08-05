@@ -282,7 +282,9 @@ public struct ARESSettingsView: View {
                 TextField("WebUI Port", value: $config.webuiPort, formatter: NumberFormatter())
                     .textFieldStyle(.roundedBorder)
                     
-                Toggle("Start WebUI Server on App Launch", isOn: $config.autoLaunchOnStart)
+                Text("The ARES Mac app owns and starts this controller. Background behavior is configured in Web Settings → System.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 Toggle("Enable Live Reload / Dev Mode", isOn: $config.reloadDevMode)
             }
 
@@ -370,7 +372,7 @@ public struct ARESSettingsView: View {
             Section(header: Text("Backend Liveness").font(.headline)) {
                 HStack(spacing: 24) {
                     statusCard(title: "Hermes Gateway", isLive: hermesLive, url: config.hermesURL)
-                    statusCard(title: "JROS Gateway", isLive: jrosLive, url: config.jrosURL)
+                    statusCard(title: "Jaeger AI Gateway", isLive: jrosLive, url: config.jrosURL)
                 }
             }
             
@@ -379,9 +381,9 @@ public struct ARESSettingsView: View {
                     .textFieldStyle(.roundedBorder)
                 SecureField("Hermes API Key", text: $config.hermesAPIKey)
                     .textFieldStyle(.roundedBorder)
-                TextField("JROS Gateway URL", text: $config.jrosURL)
+                TextField("Jaeger AI Gateway URL", text: $config.jrosURL)
                     .textFieldStyle(.roundedBorder)
-                SecureField("JROS Gateway Key", text: $config.jrosAPIKey)
+                SecureField("Jaeger AI Gateway Key", text: $config.jrosAPIKey)
                     .textFieldStyle(.roundedBorder)
             }
         }
@@ -691,7 +693,7 @@ public struct ARESSettingsView: View {
             self.hermesLive = false
         }
         
-        // Probe JROS
+        // Probe Jaeger AI
         if let jrosUrl = endpointURL(base: config.jrosURL, path: "/v1/health") {
             var request = URLRequest(url: jrosUrl)
             request.timeoutInterval = 1.0

@@ -13,8 +13,8 @@ export type SurfaceLink = {
 };
 
 /**
- * Shared chrome for the six product surfaces (Companion, Self, Workshop,
- * Library, System hubs). Keeps domain pages visually consistent without
+ * Shared chrome for the product surfaces (Companion, Self, Engineering,
+ * Library, Control Center hubs). Keeps domain pages visually consistent without
  * forcing every child route into a single layout tree.
  */
 export function SurfaceShell({
