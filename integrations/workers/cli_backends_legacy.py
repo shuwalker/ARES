@@ -239,6 +239,11 @@ class ClaudeLocalBackend(CliBackend):
     prompt_flag = "-p"
     credential_env_vars = ("ANTHROPIC_API_KEY",)
 
+    def inventory(self) -> dict[str, Any] | None:
+        """Claude configured model from env/settings.json."""
+        from model_discovery import discover_claude_models
+        return discover_claude_models()
+
 
 class CodexLocalBackend(CliBackend):
     name = "codex_local"
@@ -247,6 +252,11 @@ class CodexLocalBackend(CliBackend):
     supports_tools = True
     extra_args = ["exec", "--skip-git-repo-check"]
     credential_env_vars = ("OPENAI_API_KEY",)
+
+    def inventory(self) -> dict[str, Any] | None:
+        """Codex configured models from config.toml."""
+        from model_discovery import discover_codex_models
+        return discover_codex_models()
 
 
 class GeminiLocalBackend(CliBackend):
@@ -258,6 +268,11 @@ class GeminiLocalBackend(CliBackend):
     extra_args = ["--skip-trust"]
     credential_env_vars = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 
+    def inventory(self) -> dict[str, Any] | None:
+        """Gemini configured model from env/settings.json."""
+        from model_discovery import discover_gemini_local_models
+        return discover_gemini_local_models()
+
 
 class GrokLocalBackend(CliBackend):
     name = "grok_local"
@@ -267,6 +282,11 @@ class GrokLocalBackend(CliBackend):
     needs_tty = True
     credential_env_vars = ("XAI_API_KEY",)
 
+    def inventory(self) -> dict[str, Any] | None:
+        """Grok models from ~/.grok/models_cache.json (xAI official CLI)."""
+        from model_discovery import discover_grok_models
+        return discover_grok_models()
+
 
 class OpenCodeLocalBackend(CliBackend):
     name = "opencode_local"
@@ -274,6 +294,11 @@ class OpenCodeLocalBackend(CliBackend):
     display_label = "OpenCode"
     supports_tools = True
     credential_env_vars = ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "XAI_API_KEY")
+
+    def inventory(self) -> dict[str, Any] | None:
+        """OpenCode models via `opencode models` subcommand."""
+        from model_discovery import discover_opencode_models
+        return discover_opencode_models(self.cli_name)
 
 
 class CursorLocalBackend(CliBackend):
@@ -285,6 +310,11 @@ class CursorLocalBackend(CliBackend):
 
     def _cli_path(self) -> str:
         return shutil.which(self.cli_name) or ""
+
+    def inventory(self) -> dict[str, Any] | None:
+        """Cursor CLI not installed on this machine; honest empty state."""
+        from model_discovery import discover_cursor_local_models
+        return discover_cursor_local_models()
 
 
 class PiLocalBackend(CliBackend):
@@ -300,6 +330,11 @@ class PiLocalBackend(CliBackend):
             args.extend(["--provider", "ollama", "--model", model])
         args.append(message)
         return args
+
+    def inventory(self) -> dict[str, Any] | None:
+        """Pi delegates to Ollama (hardcoded --provider ollama in _build_args)."""
+        from model_discovery import discover_pi_local_models
+        return discover_pi_local_models()
 
 
 def run_ollama_streaming(

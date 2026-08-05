@@ -1017,10 +1017,10 @@ export const aresApi = {
   async connections() {
     return translateConnections(await apiFetch("/api/connections"));
   },
-  async setDefaultBackend(backend: string) {
-    return apiFetch<{ ok: boolean; backend: string }>("/api/ares/backend/set", {
+  async setDefaultBackend(backend: string, sessionId?: string) {
+    return apiFetch<{ ok: boolean; backend: string; scope: string }>("/api/ares/backend/set", {
       method: "POST",
-      body: JSON.stringify({ backend }),
+      body: JSON.stringify(sessionId ? { backend, session_id: sessionId } : { backend }),
     });
   },
   async registryProviders() {

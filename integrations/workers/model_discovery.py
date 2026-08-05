@@ -479,3 +479,282 @@ def discover_jros_models(
             "instance": inst,
         },
     }
+
+
+# ── CLI Adapter Model Discovery (Phase 2) ──
+
+
+def discover_claude_models(claude_home: str | None = None) -> dict[str, Any]:
+    """Claude Code configured model from env/settings.json/~/.claude.json."""
+    from core.memory.journal.paths import claude_home as default_claude_home
+
+    home = Path(claude_home or default_claude_home())
+    models: list[dict[str, Any]] = []
+
+    # Check env first (highest precedence)
+    env_model = (os.environ.get("ANTHROPIC_MODEL") or "").strip()
+    if env_model:
+        models.append(
+            model_entry(
+                id=env_model,
+                label=env_model,
+                location="cloud",
+                provider="anthropic",
+                in_use=True,
+                source="ANTHROPIC_MODEL env",
+            )
+        )
+        return {"models": models}
+
+    # Check project settings.json
+    project_settings = _safe_json_load(home / "settings.json")
+    project_model = (str(project_settings.get("model") or "")).strip()
+    if project_model:
+        models.append(
+            model_entry(
+                id=project_model,
+                label=project_model,
+                location="cloud",
+                provider="anthropic",
+                in_use=True,
+                source=str(home / "settings.json"),
+            )
+        )
+        return {"models": models}
+
+    # Check global settings ~/.claude.json
+    global_settings = _safe_json_load(Path.home() / ".claude.json")
+    global_model = (str(global_settings.get("model") or "")).strip()
+    if global_model:
+        models.append(
+            model_entry(
+                id=global_model,
+                label=global_model,
+                location="cloud",
+                provider="anthropic",
+                in_use=True,
+                source=str(Path.home() / ".claude.json"),
+            )
+        )
+        return {"models": models}
+
+    # Documented aliases (real, vendor-published, not synthetic IDs)
+    for alias in ("opus", "sonnet", "haiku"):
+        models.append(
+            model_entry(
+                id=alias,
+                label=f"claude-{alias}",
+                location="cloud",
+                provider="anthropic",
+                in_use=False,
+                source="documented CLI alias",
+                notes="Documented Claude Code alias, not live-verified",
+            )
+        )
+
+    return {"models": models}
+
+
+def discover_codex_models(codex_home: str | None = None) -> dict[str, Any]:
+    """Codex configured models from config.toml (profile-aware)."""
+    from core.memory.journal.paths import codex_dir
+    import tomllib
+
+    home = Path(codex_home or codex_dir())
+    config_path = home / "config.toml"
+    models: list[dict[str, Any]] = []
+
+    if not config_path.is_file():
+        return {"models": models}
+
+    try:
+        with config_path.open("rb") as fh:
+            cfg = tomllib.load(fh)
+    except Exception:
+        logger.debug("Failed to parse %s", config_path, exc_info=True)
+        return {"models": models}
+
+    # Top-level model
+    top_model = (str(cfg.get("model") or "")).strip()
+    if top_model:
+        models.append(
+            model_entry(
+                id=top_model,
+                label=top_model,
+                location=infer_model_location(None, top_model),
+                provider=None,
+                in_use=True,
+                source=str(config_path),
+            )
+        )
+
+    # Per-profile models
+    profiles = cfg.get("profiles") or {}
+    if isinstance(profiles, dict):
+        for pname, pdata in profiles.items():
+            if not isinstance(pdata, dict):
+                continue
+            pmodel = (str(pdata.get("model") or "")).strip()
+            if pmodel:
+                models.append(
+                    model_entry(
+                        id=pmodel,
+                        label=pmodel,
+                        location=infer_model_location(None, pmodel),
+                        provider=None,
+                        in_use=False,
+                        source=str(config_path),
+                        notes=f"profile: {pname}",
+                    )
+                )
+
+    return {"models": models}
+
+
+def discover_gemini_local_models(gemini_home: str | None = None) -> dict[str, Any]:
+    """Gemini local configured model from env/settings.json."""
+    from core.memory.journal.paths import gemini_home as default_gemini_home
+
+    home = Path(gemini_home or default_gemini_home())
+    models: list[dict[str, Any]] = []
+
+    # Check env first
+    env_model = (os.environ.get("GEMINI_MODEL") or "").strip()
+    if env_model:
+        models.append(
+            model_entry(
+                id=env_model,
+                label=env_model,
+                location="cloud",
+                provider="google",
+                in_use=True,
+                source="GEMINI_MODEL env",
+            )
+        )
+        return {"models": models}
+
+    # Check settings.json
+    settings = _safe_json_load(home / "settings.json")
+    settings_model = (str(settings.get("model") or "")).strip()
+    if settings_model:
+        models.append(
+            model_entry(
+                id=settings_model,
+                label=settings_model,
+                location="cloud",
+                provider="google",
+                in_use=True,
+                source=str(home / "settings.json"),
+            )
+        )
+
+    return {"models": models}
+
+
+def discover_opencode_models(cli_path: str = "opencode") -> dict[str, Any]:
+    """OpenCode models via `opencode models` subcommand."""
+    import subprocess
+
+    models: list[dict[str, Any]] = []
+
+    try:
+        result = subprocess.run(
+            [cli_path, "models"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env={**os.environ, "NO_COLOR": "1"},  # Disable color codes
+        )
+        if result.returncode != 0:
+            logger.debug("opencode models returned %d: %s", result.returncode, result.stderr)
+            return {"models": models}
+
+        for line in (result.stdout or "").strip().split("\n"):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            # Expected format: "provider/model" or just "model"
+            if "/" in line:
+                provider, model_id = line.split("/", 1)
+                model_id = model_id.strip()
+                provider = provider.strip()
+            else:
+                model_id = line
+                provider = None
+
+            if model_id:
+                models.append(
+                    model_entry(
+                        id=model_id,
+                        label=model_id,
+                        location=infer_model_location(provider, model_id),
+                        provider=provider,
+                        in_use=False,
+                        source=f"{cli_path} models",
+                    )
+                )
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        logger.debug("Failed to run opencode models", exc_info=True)
+
+    return {"models": models}
+
+
+def discover_grok_models(grok_home: str | None = None) -> dict[str, Any]:
+    """Grok models from ~/.grok/models_cache.json (xAI official CLI)."""
+    home = Path(grok_home or os.environ.get("GROK_HOME") or Path.home() / ".grok")
+    cache_path = home / "models_cache.json"
+    models: list[dict[str, Any]] = []
+
+    cache = _safe_json_load(cache_path)
+    if not cache:
+        return {"models": models}
+
+    for item in cache.get("models") or []:
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("id") or item.get("model") or "").strip()
+        if not model_id:
+            continue
+        models.append(
+            model_entry(
+                id=model_id,
+                label=model_id,
+                location="cloud",
+                provider="xai",
+                in_use=False,
+                source=str(cache_path),
+            )
+        )
+
+    if not models:
+        logger.debug("No models found in %s", cache_path)
+
+    return {"models": models}
+
+
+def discover_cursor_local_models() -> dict[str, Any]:
+    """Cursor CLI not installed on this machine; placeholder returning honest empty state."""
+    # Cursor CLI binary name and model-list subcommand are not yet verified.
+    # Once installed, a spike should determine the real interface before implementation.
+    return {
+        "models": [
+            model_entry(
+                id="cursor-unknown",
+                label="(Cursor CLI not detected)",
+                location=None,
+                provider=None,
+                in_use=False,
+                source="model_discovery.discover_cursor_local_models",
+                notes="Cursor CLI not detected; model discovery not yet implemented — spike once a real install is available",
+            )
+        ]
+    }
+
+
+def discover_pi_local_models() -> dict[str, Any]:
+    """Pi Coding Agent delegates to Ollama (hardcoded in _build_args)."""
+    # Note: PiLocalBackend._build_args() unconditionally passes --provider ollama,
+    # indicating Pi's models ARE Ollama's installed models. If Pi ever supports
+    # other providers, this delegation should be revisited.
+    ollama_models = list_ollama_local_models()
+    return {"models": ollama_models}

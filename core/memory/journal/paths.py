@@ -43,9 +43,14 @@ def hermes_db() -> Path:
     return Path(os.environ.get("HERMES_HOME", _home() / ".hermes")) / "state.db"
 
 
+def claude_home() -> Path:
+    """Claude Code config/state directory."""
+    return Path(os.environ.get("CLAUDE_HOME", _home() / ".claude"))
+
+
 def claude_projects_dir() -> Path:
     """Claude Code projects directory."""
-    return Path(os.environ.get("CLAUDE_HOME", _home() / ".claude")) / "projects"
+    return claude_home() / "projects"
 
 
 def codex_dir() -> Path:
@@ -53,10 +58,14 @@ def codex_dir() -> Path:
     return Path(os.environ.get("CODEX_HOME", _home() / ".codex"))
 
 
+def gemini_home() -> Path:
+    """Gemini/Antigravity config/state directory."""
+    return Path(os.environ.get("GEMINI_HOME", _home() / ".gemini"))
+
+
 def gemini_conversations_dir() -> Path:
     """Gemini/Antigravity conversations directory."""
-    base = Path(os.environ.get("GEMINI_HOME", _home() / ".gemini"))
-    return base / "antigravity-ide" / "conversations"
+    return gemini_home() / "antigravity-ide" / "conversations"
 
 
 def gemini_state_db() -> Path:
@@ -131,12 +140,12 @@ def document_scan_dirs() -> list[Path]:
         dirs.append(hermes_plans)
 
     # Gemini brain
-    gemini_brain = Path(os.environ.get("GEMINI_HOME", _home() / ".gemini")) / "antigravity-ide" / "brain"
+    gemini_brain = gemini_home() / "antigravity-ide" / "brain"
     if gemini_brain.is_dir():
         dirs.append(gemini_brain)
 
     # Claude project instructions
-    claude_dir = Path(os.environ.get("CLAUDE_HOME", _home() / ".claude"))
+    claude_dir = claude_home()
     if claude_dir.is_dir():
         dirs.append(claude_dir)
 

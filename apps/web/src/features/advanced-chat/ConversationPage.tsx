@@ -46,6 +46,7 @@ import { aresApi } from "@/shared/ares-api";
 import { useLocalProfile } from "@/shared/local-profile";
 import { useWorkbenchPanel } from "@/shared/workbench-panel";
 import { apiFetch, readableError, PROVIDER_UNAVAILABLE_CODES } from "@/shared/api-client";
+import { backendLabel } from "@/shared/backend-catalog";
 
 // Hermes-matching dark blue palette
 const H = {
@@ -454,6 +455,25 @@ export function ConversationPage() {
     selectedModel, selectedModelProvider, workspaceOverride, currentSession, snapshot.workspaces,
   ]);
 
+  // Suggest the first connected backend when none is explicitly chosen
+  const suggestedBackend = useMemo(() => {
+    const hasExplicitChoice = currentSession?.backendId || snapshot.connections.some((c) => c.selected);
+    if (hasExplicitChoice) return null;
+    return snapshot.connections.find((c) => c.state === "connected" || c.state === "needs_attention") || null;
+  }, [currentSession?.backendId, snapshot.connections]);
+
+  // Persist backend selection through the session-scoped endpoint
+  const selectBackend = useCallback(async (id: string) => {
+    if (!currentSession?.id) return;
+    try {
+      await aresApi.setDefaultBackend(id, currentSession.id);
+      setSelectedBackend(id);
+      await refresh();
+    } catch (error) {
+      console.error("Failed to set backend:", error);
+    }
+  }, [currentSession?.id, refresh]);
+
   const handleComposerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
@@ -780,6 +800,21 @@ export function ConversationPage() {
           </div>
         )}
 
+        {suggestedBackend && !cannotSend && (
+          <div style={{ marginBottom: "0.5rem", maxWidth: "46.25rem", margin: "0 auto 0.5rem", padding: "0.5625rem 0.875rem", borderRadius: "0.5rem", border: `1px solid ${H.border2}`, background: `rgba(8,235,241,0.05)`, color: H.text, fontSize: "0.8125rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span style={{ flex: 1 }}>
+              Suggested: <strong>{backendLabel(suggestedBackend.id)}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => selectBackend(suggestedBackend.id)}
+              style={{ flexShrink: 0, padding: "0.25rem 0.625rem", borderRadius: "0.375rem", border: "none", background: H.accentGlow, color: "#000", fontWeight: 600, cursor: "pointer", fontSize: "0.75rem" }}
+            >
+              Use this
+            </button>
+          </div>
+        )}
+
         {chatNotice && (
           <div style={{ marginBottom: "0.5rem", maxWidth: "46.25rem", margin: "0 auto 0.5rem", padding: "0.5625rem 0.875rem", borderRadius: "0.5rem", border: "1px solid rgba(251,191,36,0.3)", background: "rgba(251,191,36,0.08)", color: "#fbbf24", fontSize: "0.8125rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <AlertTriangle size={13} style={{ flexShrink: 0 }} />
@@ -931,36 +966,6 @@ export function ConversationPage() {
                           {selectedPersonality === p.id && <Check size={11} style={{ marginLeft: "auto", color: H.accentGlow }} />}
                         </button>
                       ))}
-                    </div>
-                    {/* Delegation Agents / Backends */}
-                    <div style={{ padding: "0.5rem 0.625rem", borderBottom: `1px solid ${H.border}` }}>
-                      <div style={{ fontSize: "0.625rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: H.muted, marginBottom: "0.375rem" }}>Delegation Workers</div>
-                      {backendOptions.map((b) => (
-                        <button
-                          key={b.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedBackend(b.id);
-                            setShowSiModeMenu(false);
-                          }}
-                          style={{
-                            display: "flex", alignItems: "center", gap: "0.5rem", width: "100%", padding: "0.5rem 0.625rem", marginBottom: "0.25rem",
-                            borderRadius: "0.375rem", border: `1px solid ${selectedBackend === b.id ? H.accentGlow : H.border}`,
-                            background: selectedBackend === b.id ? "rgba(8,235,241,0.1)" : "transparent",
-                            color: H.text, textAlign: "left", cursor: "pointer",
-                          }}
-                        >
-                          <Server size={11} style={{ opacity: 0.7, color: selectedBackend === b.id ? H.accentGlow : H.muted }} />
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: "0.75rem" }}>{b.label}</div>
-                            <div style={{ fontSize: "0.625rem", color: H.muted, fontFamily: "monospace" }}>{b.detail || b.id}</div>
-                          </div>
-                          {selectedBackend === b.id && <Check size={11} style={{ marginLeft: "auto", color: H.accentGlow }} />}
-                        </button>
-                      ))}
-                    </div>
-                    <div style={{ padding: "0.5rem 0.625rem", fontSize: "0.625rem", color: H.muted, lineHeight: 1.5 }}>
-                      <strong>Jaeger AI</strong> is your persistent agent. It understands your intent, selects the right character, and delegates to workers.
                     </div>
                   </div>
                 )}
@@ -1302,6 +1307,7 @@ export function ConversationPage() {
                 </button>
               )}
             </div>
+          </div>
           </div>
         </form>
       </div>

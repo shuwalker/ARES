@@ -358,6 +358,16 @@ class OllamaLocalBackend(AgenticBackend):
     def get_status(self) -> Dict[str, Any]:
         return {"available": self.is_available(), "label": "Ollama"}
 
+    def inventory(self) -> Dict[str, Any] | None:
+        """Installed Ollama models via /api/tags."""
+        from model_discovery import list_ollama_local_models
+        from catalog import finalize_inventory
+
+        models = list_ollama_local_models()
+        if not models:
+            return None
+        return finalize_inventory({"models": models})
+
     def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
         if not self.is_available():
             return {"text": "", "error": "Ollama not running.", "tool_activity": []}

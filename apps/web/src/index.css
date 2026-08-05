@@ -567,12 +567,6 @@ html[data-skin="neon-paint"] {
 }
 
 
-  
-  /* Keep toolbar minimal gap */
-  .conversation-toolbar-simplified {
-    gap: 0.25rem !important;
-  }
-}
 
 /* === ARES Mobile Toolbar Simplification === */
 /* Hide advanced chips on iPhone - keep Attach, Dictate, Send visible */
