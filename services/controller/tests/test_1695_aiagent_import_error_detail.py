@@ -15,7 +15,7 @@ This test suite locks the diagnostic shape of the new error message:
   - ARES_WEBUI_AGENT_DIR is shown if set, "(not set)" otherwise.
   - The relevant sys.path entries are shown.
   - A pip install -e . hint is included.
-  - A pointer to the canonical docs/DEVELOPMENT.md guide is included.
+  - A pointer to the canonical docs/development.md guide is included.
 
 Behavioural test for the actual raise path lives in the streaming integration
 suite; this file only exercises the helper.
@@ -152,29 +152,29 @@ class TestAIAgentImportErrorDocsPresence:
     """
 
     def test_troubleshooting_md_exists(self):
-        path = PROJECT_ROOT / "docs" / "DEVELOPMENT.md"
-        assert path.exists(), "docs/DEVELOPMENT.md must exist (referenced by streaming.py)"
+        path = PROJECT_ROOT / "docs" / "development.md"
+        assert path.exists(), "docs/development.md must exist (referenced by streaming.py)"
 
     def test_troubleshooting_md_has_aiagent_section(self):
-        path = PROJECT_ROOT / "docs" / "DEVELOPMENT.md"
+        path = PROJECT_ROOT / "docs" / "development.md"
         content = path.read_text(encoding="utf-8")
         assert "AIAgent not available" in content, (
-            "docs/DEVELOPMENT.md must have an entry titled \"AIAgent not available\""
+            "docs/development.md must have an entry titled \"AIAgent not available\""
         )
 
     def test_troubleshooting_md_includes_pip_install_editable(self):
         """The doc must surface the `pip install -e .` fix."""
-        path = PROJECT_ROOT / "docs" / "DEVELOPMENT.md"
+        path = PROJECT_ROOT / "docs" / "development.md"
         content = path.read_text(encoding="utf-8")
         assert "pip install -e ." in content, (
-            "docs/DEVELOPMENT.md must include the pip install -e . fix"
+            "docs/development.md must include the pip install -e . fix"
         )
 
     def test_troubleshooting_md_describes_diagnostic_steps(self):
         """The doc must walk through diagnostic commands (readlink, ls, etc.)
         before jumping to the fix — that ordering is what worked for #1695.
         """
-        path = PROJECT_ROOT / "docs" / "DEVELOPMENT.md"
+        path = PROJECT_ROOT / "docs" / "development.md"
         content = path.read_text(encoding="utf-8")
         # Look for the symlink-resolution diagnostic chain.
         assert "readlink" in content, (

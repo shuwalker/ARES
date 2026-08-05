@@ -17,15 +17,10 @@ def test_cross_agent_entrypoint_routes_canonical_context():
     entrypoint = _read("AGENTS.md")
 
     for required in (
-        "docs/PRODUCT_SPEC.md",
-        "docs/ARCHITECTURE.md",
+        "docs/vision.md",
+        "docs/architecture.md",
         "docs/API.md",
-        "docs/SECURITY.md",
-        "docs/DEVELOPMENT.md",
-        "docs/CURRENT_STATE.md",
-        "docs/features/si-personalization.md",
-        "docs/features/system-settings.md",
-        "docs/features/multi-agent-orchestration.md",
+        "docs/development.md",
     ):
         assert required in entrypoint
         assert (ROOT / required).exists()

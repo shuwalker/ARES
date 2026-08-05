@@ -2,7 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
-DOCKER_MD = (ROOT / "docs" / "DEVELOPMENT.md").read_text(encoding="utf-8")
+DOCKER_MD = (ROOT / "docs" / "development.md").read_text(encoding="utf-8")
 
 
 def test_docker_docs_explain_host_localhost_for_api_urls():
