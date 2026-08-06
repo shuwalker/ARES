@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 import logging
 import os
 from typing import AsyncIterator
@@ -12,6 +14,13 @@ from fastapi import FastAPI
 
 
 logger = logging.getLogger(__name__)
+
+# Same guarded pattern used throughout services/controller/api/*.py (e.g.
+# context_chunker.py) — integrations.* lives at the monorepo root, one level
+# above services/controller, so it is not on sys.path by default here.
+_MONOREPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_MONOREPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_MONOREPO_ROOT))
 
 
 def _autoload_hatched_sis() -> None:
@@ -48,7 +57,10 @@ async def startup_runtime() -> None:
     from api.process_runtime import configure_process_runtime
     from api.startup import auto_install_agent_deps, fix_credential_permissions
 
+    from api.log_config import configure_logging
+
     install_crash_visibility()
+    configure_logging()
     process_status = configure_process_runtime()
     if process_status["file_descriptors"].get("status") == "error":
         logger.warning("Could not raise file descriptor limit: %s", process_status["file_descriptors"].get("error"))
@@ -163,6 +175,16 @@ async def shutdown_runtime() -> None:
 
         await _best_effort("Background completion drain shutdown", stop_drain_thread)
         await _best_effort("Session activity reaper shutdown", stop_session_channel_reaper)
+    except ImportError:
+        pass
+    try:
+        from integrations.workers.jros_session_manager import close_all as close_all_jaeger_bridges
+
+        # Each JrosClient owns a real subprocess that loaded an LLM + tool +
+        # voice model at boot (multi-second cold start). Without this, a
+        # restarted or crashed ARES process leaves those orphaned in the
+        # background indefinitely instead of exiting with the server.
+        await _best_effort("Jaeger bridge session shutdown", close_all_jaeger_bridges)
     except ImportError:
         pass
     from api.shutdown_audit import log_shutdown_audit

@@ -6,7 +6,6 @@ Uses auto-detection: no hardcoded paths, respects environment variables.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from typing import Any, Dict, Optional
@@ -182,62 +181,43 @@ class JaegerWorker:
             raise
 
     def _execute_bridge(self, message: str, session_id: str, model: str | None = None, model_provider: str | None = None, **kwargs) -> Dict[str, Any]:
-        """Execute via Jaeger bridge (subprocess, local models)."""
-        import subprocess
+        """Execute via Jaeger bridge — a persistent NDJSON session, not a
+        one-shot subprocess call.
 
-        try:
-            # Prepare input for bridge
-            input_data = {
-                "message": message,
-                "session_id": session_id,
-                **kwargs,
-            }
-            if model:
-                input_data["model"] = model
-            if model_provider:
-                input_data["provider"] = model_provider
+        The real ``jaeger bridge`` process announces readiness, boots an LLM
+        (plus tool/voice models — multi-second cold start), and then expects
+        stdin to stay open across turns; it only exits on an explicit "quit"
+        op or a crash. A previous version of this method used
+        ``subprocess.run(input=...)``, which writes once and closes stdin
+        immediately — the bridge read that early EOF as shutdown and exited
+        mid-boot, before ever answering, so every call silently returned
+        empty text. Delegating to jros_session_manager keeps one real
+        JrosClient (integrations.providers.jaeger.bridge_client — ARES's own
+        already-hardened client, not a hand-rolled reimplementation) alive
+        per ARES session_id across the many short-lived JaegerWorker
+        instances BackendRegistry.get_available() creates.
+        """
+        from integrations.workers.jros_session_manager import run_turn as bridge_run_turn
 
-            # Call jaeger bridge subprocess
-            result = subprocess.run(
-                [str(self.bridge_root / "jaeger"), "bridge"],
-                input=json.dumps(input_data),
-                capture_output=True,
-                text=True,
-                timeout=300.0,  # 5 minute timeout
-                cwd=str(self.bridge_root),
-            )
+        # Pass the root JaegerWorker already detected as available (not a
+        # raw command), so JrosClient's own launcher+instance resolution
+        # runs — that resolution is what fixes a known JROS 0.7
+        # "ready-then-stall" bug on the implicit default bridge.
+        # model/model_provider aren't part of the v1 wire contract's send op
+        # (bridge_client.send_op only carries text + session) — the bridge
+        # picks its own model at boot. Nothing here silently drops them:
+        # there is simply no such parameter on the real protocol to pass.
+        result = bridge_run_turn(session_id, message, jaeger_home=str(self.bridge_root))
 
-            if result.returncode != 0:
-                logger.error("Bridge error: %s", result.stderr)
-                raise RuntimeError(f"Bridge failed: {result.stderr}")
-
-            # Parse output (NDJSON)
-            lines = result.stdout.strip().split("\n")
-            response_data = {}
-            text = ""
-
-            for line in lines:
-                if not line.strip():
-                    continue
-                try:
-                    obj = json.loads(line)
-                    if obj.get("type") == "response":
-                        response_data = obj
-                        text = obj.get("text", text)
-                except json.JSONDecodeError:
-                    logger.debug("Non-JSON line from bridge: %s", line)
-
-            return {
-                "text": text,
-                "model": response_data.get("model", self.model_name),
-                "provider": response_data.get("provider", "jaeger"),
-                "input_tokens": response_data.get("input_tokens", 0),
-                "output_tokens": response_data.get("output_tokens", 0),
-                "mode": "bridge",
-            }
-        except Exception as e:
-            logger.error("Bridge execution failed: %s", e)
-            raise
+        return {
+            "text": result.get("text", ""),
+            "error": result.get("error"),
+            "model": self.model_name,
+            "provider": "jaeger",
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "mode": "bridge",
+        }
 
     def health(self) -> Dict[str, Any]:
         """Health check status."""
