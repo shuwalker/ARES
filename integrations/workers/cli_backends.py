@@ -610,3 +610,22 @@ from .cli_backends_legacy import (  # noqa: E402, F811
     _ollama_base_url,
     run_ollama_streaming,
 )
+
+# The docstring at the top of cli_backends_legacy.py calls these classes
+# "deprecated in favor of the SDK-based backends in cli_backends.py" — but
+# this file only registers CLOUD-API variants (ClaudeCloudBackend,
+# XAICloudBackend); there is no SDK-based replacement for LOCAL CLI dispatch
+# (talking to the `claude`, `codex`, `grok` binaries a user already has
+# installed and configured). Without registering these, BackendRegistry.
+# get_available() — the source of truth DispatchService queries — never
+# surfaces them, even though each class's is_available()/inventory() work
+# correctly on their own (services/controller/tests/test_ares_backend_adapters.py
+# already covers the per-class contract). Registering unblocks real dispatch
+# to Claude Code, Codex, Grok, and the other local CLI agents.
+BackendRegistry.register(ClaudeLocalBackend)
+BackendRegistry.register(CodexLocalBackend)
+BackendRegistry.register(GeminiLocalBackend)
+BackendRegistry.register(GrokLocalBackend)
+BackendRegistry.register(OpenCodeLocalBackend)
+BackendRegistry.register(CursorLocalBackend)
+BackendRegistry.register(PiLocalBackend)

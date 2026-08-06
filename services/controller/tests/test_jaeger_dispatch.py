@@ -17,8 +17,13 @@ class MockJaegerWorker:
     def is_available(self) -> bool:
         return True
 
-    def run_turn(self, message: str, session_id: str) -> dict:
-        """Simulate Jaeger AI execution."""
+    def run_turn(self, message: str, session_id: str, model: str | None = None, model_provider: str | None = None, **kwargs) -> dict:
+        """Simulate Jaeger AI execution.
+
+        Signature mirrors the real integrations.workers.jaeger_worker.run_turn
+        contract (model/model_provider + **kwargs) so this mock can't silently
+        drift from what DispatchService.dispatch_turn actually calls.
+        """
         return {
             "text": f"Jaeger response to: {message}",
             "model": "gpt-4-turbo",  # Simulate cloud model
