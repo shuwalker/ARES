@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import os
 import platform
 import re
 import shutil
+import signal
+import socket
 import ssl
 import subprocess
 import sys
@@ -581,6 +584,60 @@ def _detect_supervisor() -> str | None:
     return None
 
 
+def check_port_in_use(host: str, port: int) -> bool:
+    """Check if host:port is already listening."""
+    check_host = "127.0.0.1" if host in ("0.0.0.0", "", "::") else host
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(0.5)
+    try:
+        s.connect((check_host, port))
+        s.close()
+        return True
+    except (OSError, ConnectionRefusedError):
+        return False
+
+
+def write_pid_file(state_dir: Path, pid: int, port: int) -> Path:
+    """Write process PID to state_dir/webui-<port>.pid and register cleanup on exit."""
+    state_dir.mkdir(parents=True, exist_ok=True)
+    pid_file = state_dir / f"webui-{port}.pid"
+    try:
+        pid_file.write_text(str(pid))
+    except OSError:
+        pass
+
+    def _cleanup_pid():
+        try:
+            if pid_file.exists() and pid_file.read_text().strip() == str(pid):
+                pid_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    atexit.register(_cleanup_pid)
+    return pid_file
+
+
+def install_child_signal_handlers(proc: subprocess.Popen) -> None:
+    """Ensure SIGTERM/SIGINT terminates child server process cleanly without leaving orphans."""
+    def _handler(sig, frame):
+        warn(f"Received signal {sig}; terminating child server process PID {proc.pid}")
+        try:
+            proc.terminate()
+            proc.wait(timeout=5)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        sys.exit(0)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _handler)
+        except (ValueError, OSError):
+            pass
+
+
 def main() -> int:
     args = parse_args()
     ensure_supported_platform()
@@ -633,6 +690,18 @@ def main() -> int:
     )
     # Scheme the server will advertise (HTTPS when TLS cert+key are configured).
     scheme = "https" if _tls_probe_enabled() else "http"
+
+    # Write PID file
+    write_pid_file(state_dir, os.getpid(), args.port)
+
+    # Check port collision before proceeding
+    if check_port_in_use(args.host, args.port):
+        health_url = f"{scheme}://{args.host}:{args.port}/health"
+        if _health_ok(health_url):
+            warn(f"Ares Web UI is already running and healthy on {scheme}://{args.host}:{args.port}")
+            sys.exit(1)  # Hard abort — refuse to start a duplicate instance
+        else:
+            warn(f"Port {args.port} is already in use by another process.")
 
     # --foreground (or auto-detected supervisor): replace this process with the
     # server. The supervisor sees the long-lived server as the original child,
@@ -718,6 +787,8 @@ def main() -> int:
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+
+    install_child_signal_handlers(proc)
 
     health_url = f"{scheme}://{args.host}:{args.port}/health"
     healthy_scheme = wait_for_health(health_url)
